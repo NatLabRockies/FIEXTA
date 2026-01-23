@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 plt.close('all')
 
 #%% Inputs
-azi=np.arange(-20,21,5)+90
+azi=np.arange(-25,26,5)+90
 ele=azi*0
 r=np.arange(0,1000,30)+15
 
