@@ -62,6 +62,7 @@ class statistics:
         dx=self.config.grid_factor*Dn0
         r_max=self.config.r_max*self.config.sigma
         V=np.pi**(n/2)/gamma(n/2+1)*r_max**n
+        dist_edge=int(self.config.dist_edge*self.config.sigma/self.config.grid_factor)
         
         #grid definition
         for j in range(n):
@@ -95,7 +96,7 @@ class statistics:
             s=np.where(distSq<r_max**2)[0]   
             if len(s)>0:
                 w[i]=np.exp(-distSq[s]/(2*self.config.sigma**2))
-                
+            
             #local spacing
             if Dd[i]!=10**99:   
                 if len(s)>1: 
@@ -125,8 +126,8 @@ class statistics:
             ind_inf=[]
             if Dd[i]>self.config.max_Dd:
                 for j in range(n):
-                    i1=max(i[j]-self.config.dist_edge,0)
-                    i2=min(i[j]+self.config.dist_edge,np.shape(X[0])[j]-1)
+                    i1=max(i[j]-dist_edge,0)
+                    i2=min(i[j]+dist_edge,np.shape(X[0])[j]-1)
                     ind_inf.append(np.arange(i1,i2+1).astype(int))                
                 for i_inf in itertools.product(*[ii for ii in ind_inf]):
                     edge[i_inf]=True
