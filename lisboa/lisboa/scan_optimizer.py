@@ -13,6 +13,7 @@ from lisboa.utilities import sphere2cart, visualize_Pareto, visualize_scan, get_
 from matplotlib import pyplot as plt
 import xarray as xr
 from datetime import datetime
+from typing import Union
 import yaml
 
 class scan_optimizer:
@@ -43,14 +44,17 @@ class scan_optimizer:
     def pareto(
             self,
             coords,
-            azi1: np.array,
-            azi2: np.array,
-            ele1: np.array,
-            ele2: np.array,
-            dazi: np.array,
-            dele: np.array,
-            num_azi: np.array,
-            num_ele: np.array,
+            x0: Union[float,dict],
+            y0: Union[float,dict],
+            z0: Union[float,dict],
+            azi1: Union[np.array,dict],
+            azi2: Union[np.array,dict],
+            ele1: Union[np.array,dict],
+            ele2: Union[np.array,dict],
+            dazi: Union[np.array,dict],
+            dele: Union[np.array,dict],
+            num_azi: Union[np.array,dict],
+            num_ele: Union[np.array,dict],
             rmin: float,
             rmax: float,
             dr: float,
@@ -69,16 +73,31 @@ class scan_optimizer:
             config_lidar = yaml.safe_load(fid)  
             
         #select resolution mode
-        if isinstance(dazi, np.ndarray) and isinstance(dele, np.ndarray):
+        if isinstance(dazi, np.ndarray) or isinstance(dazi, dict) \
+       and isinstance(dele, np.ndarray) or isinstance(dele, dict):
             res_mode='degrees'
             res_azi=dazi
             res_ele=dele
-        elif isinstance(num_azi, np.ndarray) and isinstance(num_ele, np.ndarray):
+            geom_info=[x0,y0,z0,azi2,azi2,ele1,ele2,dazi,dele]
+                
+        elif isinstance(num_azi, np.ndarray) or isinstance(num_azi, dict) \
+         and isinstance(num_ele, np.ndarray) or isinstance(num_ele, dict):
             res_mode='count'
             res_azi=num_azi
             res_ele=num_ele
+            geom_info=[x0,y0,z0,azi2,azi2,ele1,ele2,num_azi,num_ele]
         else:
             raise BaseException('Could not figure out angular resolution type (degrees or count).')
+        
+        #check single vs multiple Doppler
+        if all(isinstance(x, dict) for x in geom_info):
+            print(f'Optimizing geometry for multi-Doppler data from {len(azi1)} instruments.')
+        elif all(isinstance(x, np.array) for x in geom_info):
+            print('Optimizing geometry for single-Doppler data.')
+            for x in geom_info:
+                globals()[x] = {'ins1': globals()[x]}
+        else:
+            raise BaseException('All geometrical scan information have to be either np.array or dict.')
             
         #zeroing
         epsilon1=np.zeros((len(azi1),len(res_azi)))+np.nan
@@ -87,75 +106,96 @@ class scan_optimizer:
     
         #scan testing
         r=np.arange(rmin,rmax+dr/2,dr)
+        
+        
+        sites=list(azi1.keys())
         i_ang=0
-        for a1,a2,e1,e2 in zip(azi1,azi2,ele1,ele2):#loop through angular sectors
+        for i_ang in range(len(azi1[sites[0]])):#loop through angular sectors
             i_dang=0
-            for ra,re in zip(res_azi,res_ele):#loop through angular resolutions
-                self.logger.log(f"Evaluating azi={a1}:{ra}:{a2}, ele={e1}:{re}:{e2}")
-                
-                #expand azimuth and elevation vectors
-                if res_mode=='degrees':
-                    ra+=10**-10
-                    re+=10**-10
-                    azi=np.arange(a1,a2+ra/2,ra)
-                    ele=np.arange(e1,e2+re/2,re)
-                    scan_name=f'{a1:.2f}_{ra:.2f}_{a2:.2f}_{e1:.2f}_{re:.2f}_{e2:.2f}'
-                elif res_mode=='count':
-                    azi=np.linspace(a1,a2,ra)
-                    ele=np.linspace(e1,e2,re)
-                    scan_name=f'{a1:.2f}_{ra}_{a2:.2f}_{e1:.2f}_{re}_{e2:.2f}'
+            for i_dang in range(len(res_azi[sites[0]])):
+                Dd_all=[]
+                excl_all=[]
+                duration_all=[]
+                for s in azi1.keys():
+                    a1=azi1[s][i_ang]
+                    a2=azi2[s][i_ang]
+                    e1=ele1[s][i_ang]
+                    e2=ele2[s][i_ang]
+                    ra=res_azi[s][i_ang]
+                    re=res_ele[s][i_ang]
                     
-                if len(azi)==1:
-                    azi=azi.squeeze()+np.zeros(len(ele))
-                if len(ele)==1:
-                    ele=ele.squeeze()+np.zeros(len(azi))
-                
-                
-                
-                if mode=='SSM':
-                    scan_file=scan_file_compiler(mode=mode,azi=azi,ele=ele,repeats=1,
-                                                 identifier=scan_name,save_path=self.save_name,
-                                                 volumetric=volumetric,reset=True)
+                    self.logger.log(f"Evaluating azi={a1}:{ra}:{a2}, ele={e1}:{re}:{e2}")
                     
-                    halo_sim=hls.halo_simulator(config={'processing_time':  config_lidar['Dt_p_SSM'],
-                                                         'acquisition_time':config_lidar['Dt_a_SSM'],
-                                                         'dwell_time': 0})
+                    #expand azimuth and elevation vectors
+                    if res_mode=='degrees':
+                        ra+=10**-10
+                        re+=10**-10
+                        azi=np.arange(a1,a2+ra/2,ra)
+                        ele=np.arange(e1,e2+re/2,re)
+                        scan_name=f'{s}_{a1:.2f}_{ra:.2f}_{a2:.2f}_{e1:.2f}_{re:.2f}_{e2:.2f}'
+                    elif res_mode=='count':
+                        azi=np.linspace(a1,a2,ra)
+                        ele=np.linspace(e1,e2,re)
+                        scan_name=f'{s}_{a1:.2f}_{ra}_{a2:.2f}_{e1:.2f}_{re}_{e2:.2f}'
+                        
+                    if len(azi)==1:
+                        azi=azi.squeeze()+np.zeros(len(ele))
+                    if len(ele)==1:
+                        ele=ele.squeeze()+np.zeros(len(azi))
                     
-                    t,azi_sim,ele_sim,t_all,azi_all,ele_all=halo_sim.scanning_head_sim(mode=mode,ppr=ppr,
-                                                                                  S_azi=config_lidar['S_azi_SSM'],
-                                                                                  A_azi=config_lidar['A_azi_SSM'],
-                                                                                  S_ele=config_lidar['S_ele_SSM'],
-                                                                                  A_ele=config_lidar['A_ele_SSM'],
-                                                                                  source=scan_file)
-                elif mode=='CSM':
-                    scan_file=scan_file_compiler(mode=mode,azi=azi,ele=ele,repeats=1,ppr=ppr,
-                                       identifier=scan_name,config=config_lidar,save_path=self.save_name,
-                                       optimize=True,volumetric=volumetric,reset=True)
-       
-                    halo_sim=hls.halo_simulator(config={'processing_time': config_lidar['Dt_p_CSM'],
-                                                        'acquisition_time':config_lidar['Dt_a_CSM'],
-                                                        'dwell_time':      config_lidar['Dt_d_CSM'][ppr],
-                                                        'ppd_azi':         config_lidar['ppd_azi'],
-                                                        'ppd_ele':         config_lidar['ppd_ele']})
-                
-                    t,azi_sim,ele_sim,t_all,azi_all,ele_all=halo_sim.scanning_head_sim(mode=mode,ppr=ppr,source=scan_file)
+                    if mode=='SSM':
+                        scan_file=scan_file_compiler(mode=mode,azi=azi,ele=ele,repeats=1,
+                                                     identifier=scan_name,save_path=self.save_name,
+                                                     volumetric=volumetric,reset=True)
+                        
+                        halo_sim=hls.halo_simulator(config={'processing_time':  config_lidar['Dt_p_SSM'],
+                                                             'acquisition_time':config_lidar['Dt_a_SSM'],
+                                                             'dwell_time': 0})
+                        
+                        t,azi_sim,ele_sim,t_all,azi_all,ele_all=halo_sim.scanning_head_sim(mode=mode,ppr=ppr,
+                                                                                      S_azi=config_lidar['S_azi_SSM'],
+                                                                                      A_azi=config_lidar['A_azi_SSM'],
+                                                                                      S_ele=config_lidar['S_ele_SSM'],
+                                                                                      A_ele=config_lidar['A_ele_SSM'],
+                                                                                      source=scan_file)
+                    elif mode=='CSM':
+                        scan_file=scan_file_compiler(mode=mode,azi=azi,ele=ele,repeats=1,ppr=ppr,
+                                           identifier=scan_name,config=config_lidar,save_path=self.save_name,
+                                           optimize=True,volumetric=volumetric,reset=True)
+           
+                        halo_sim=hls.halo_simulator(config={'processing_time': config_lidar['Dt_p_CSM'],
+                                                            'acquisition_time':config_lidar['Dt_a_CSM'],
+                                                            'dwell_time':      config_lidar['Dt_d_CSM'][ppr],
+                                                            'ppd_azi':         config_lidar['ppd_azi'],
+                                                            'ppd_ele':         config_lidar['ppd_ele']})
+                    
+                        t,azi_sim,ele_sim,t_all,azi_all,ele_all=halo_sim.scanning_head_sim(mode=mode,ppr=ppr,source=scan_file)
+                        
+                        duration_all=np.append(duration_all,t[-1])
+                        
+                    x,y,z=sphere2cart(r, azi_sim, ele_sim)
+                    if coords=='xy':
+                        x_exp=[x.ravel(),y.ravel()]
+                    elif coords=='xz':
+                        x_exp=[x.ravel(),z.ravel()]
+                    elif coords=='yz':
+                        x_exp=[y.ravel(),z.ravel()]
+                    elif coords=='xyz':
+                        x_exp=[x.ravel(),y.ravel(),z.ravel()]
+
+                    _,Dd,excl,grid,_,_,_=lproc.calculate_weights(x_exp)
+                    Dd_all+=[Dd]
+                    excl_all+=[excl]
                     
                 #epsilon1
-                x,y,z=sphere2cart(r, azi_sim, ele_sim)
-                if coords=='xy':
-                    x_exp=[x.ravel(),y.ravel()]
-                elif coords=='xz':
-                    x_exp=[x.ravel(),z.ravel()]
-                elif coords=='yz':
-                    x_exp=[y.ravel(),z.ravel()]
-                elif coords=='xyz':
-                    x_exp=[x.ravel(),y.ravel(),z.ravel()]
-                grid,Dd,excl,_,_,_,_=lproc.calculate_weights(x_exp)
+                Dd=np.max(np.stack(Dd_all,axis=3),axis=3)
+                excl=np.min(np.stack(excl_all,axis=3),axis=3)
                 epsilon1[i_ang,i_dang]=np.sum(excl)/np.size(excl)
                 
                 #epsilon2
-                if T>t[-1]:
-                    L=int(np.floor(T/t[-1]))
+                duration[i_ang,i_dang]=np.max(duration_all)
+                if T>duration[i_ang,i_dang]:
+                    L=int(np.floor(T/duration[i_ang,i_dang]))
                     p=np.arange(1,L)
                     epsilon2[i_ang,i_dang]=(1/L+2/L**2*np.sum((L-p)*np.exp(-t[-1]/tau*p)))**0.5
                     
@@ -170,7 +210,7 @@ class scan_optimizer:
                                                optimize=True,volumetric=volumetric,reset=True)
                 else:
                     epsilon2[i_ang,i_dang]=np.nan
-                duration[i_ang,i_dang]=t[-1]
+          
                 
                 #save data
                 if hasattr(self,'save_name'):
