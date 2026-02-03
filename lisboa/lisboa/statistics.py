@@ -30,45 +30,6 @@ class statistics:
         else:
             LisboaConfig.validate(self.config)
     
-    @with_logging
-    def define_grid(self,
-                    x_exp: list,
-                    f=None):
-        #reject non valid points
-        n=len(self.config.Dn0) 
-        if f is None:
-            real=~np.isnan(np.sum(np.array(x_exp),axis=0))
-        else:
-            real=~np.isnan(np.sum(np.array(x_exp),axis=0)+f)
-            f=f[real]
-            
-        for j in range(n):
-            x_exp[j]=x_exp[j][real]
-
-        #initialize variables
-        Dn0=np.array(self.config.Dn0)   
-        dx=self.config.grid_factor*Dn0
-        N=len(x_exp[0])
-        xc=np.zeros(n)
-        X_edg=[];
-        X_cen=[];
-        grid=[]
-        
-        self.logger.log(f"Calculating LiSBOA weights for {N} experimental points")
-      
-        #grid definition
-        for j in range(n):
-            X_edg.append(np.arange(self.config.mins[j]-dx[j]/2,self.config.maxs[j]+dx[j]*1.01,dx[j])/Dn0[j])#cell edges
-            X_cen.append(mid(X_edg[j]))#cell center
-
-        X=np.meshgrid(*[X_cen[j] for j in range(n)], indexing='ij')#broadcasting
-        
-        #grid in dimensional form
-        for j in range(n):
-            grid.append(X_cen[j]*Dn0[j])
-        
-        return X,grid
-    
     @with_logging    
     def calculate_weights(
             self,
