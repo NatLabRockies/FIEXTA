@@ -11,7 +11,8 @@ plt.close('all')
 #%% Inputs
 
 #user
-case='3D-multiple'
+case='2D-single'
+parallel=True
 
 #Pareto (common)
 azi1=[50,70]
@@ -89,22 +90,23 @@ if case=='3D-multiple':
     path_config_lidar={'s1':path_config_lidar,'s2':path_config_lidar}
 
 #%% Main
-
 if case=='2D-single':
     scopt=opt.scan_optimizer(config_2d)
     Pareto=scopt.pareto(coords_2d,0,0,0,azi1, azi2, ele1_2d, ele2_2d, dazi, dele_2d,None,None, volumetric=False,
-                        rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar)
+                        rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar,
+                        parallel=parallel)
 elif case=='3D-single':
     scopt=opt.scan_optimizer(config_3d)
     Pareto=scopt.pareto(coords_3d,0,0,0,azi1, azi2, ele1_3d, ele2_3d, dazi, dele_3d,None,None, volumetric=True,
-                        rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar)
+                        rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar,
+                        parallel=parallel)
 elif case=='2D-multiple':
     scopt=opt.scan_optimizer(config_2d)
     Pareto=scopt.pareto(coords_2d,x0,y0,z0,azi1, azi2, ele1_2d, ele2_2d, dazi, dele_2d,None,None, volumetric=False,
                         rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar,
-                        parallel=True)
+                        parallel=parallel)
 elif case=='3D-multiple':
     scopt=opt.scan_optimizer(config_3d)
     Pareto=scopt.pareto(coords_3d,x0,y0,z0,azi1, azi2, ele1_3d, ele2_3d, dazi, dele_3d,None,None, volumetric=True,
                         rmin=rmin,rmax=rmax, T=T,tau=tau,mode=mode, ppr=ppr, dr=dr, path_config_lidar=path_config_lidar,
-                        parallel=True)
+                        parallel=parallel)
