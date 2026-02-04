@@ -35,7 +35,7 @@ class statistics:
             self,
             x_exp: list,
             f=None):
-        
+           
         #reject non valid points
         n=len(self.config.Dn0) 
         if f is None:
@@ -51,7 +51,6 @@ class statistics:
         Dn0=np.array(self.config.Dn0)   
         N=len(x_exp[0])
         x=np.zeros((n,N))
-        xc=np.zeros(n)
         X_edg=[];
         X_cen=[];
         grid=[]
@@ -66,16 +65,15 @@ class statistics:
         
         #grid definition
         for j in range(n):
-            xc[j]=np.mean(x_exp[j])#centroid
-            x[j]=(x_exp[j]-xc[j])/Dn0[j]#normalized coordinate  
-            X_edg.append((np.arange(self.config.mins[j]-dx[j]/2,self.config.maxs[j]+dx[j]*1.01,dx[j])-xc[j])/Dn0[j])#cell edges
+            x[j]=x_exp[j]/Dn0[j]#normalized coordinate  
+            X_edg.append(np.arange(self.config.mins[j]-dx[j]/2,self.config.maxs[j]+dx[j]*1.01,dx[j])/Dn0[j])#cell edges
             X_cen.append(mid(X_edg[j]))#cell center
 
         X=np.meshgrid(*[X_cen[j] for j in range(n)], indexing='ij')#broadcasting
         
         #grid in dimensional form
         for j in range(n):
-            grid.append(X_cen[j]*Dn0[j]+xc[j])
+            grid.append(X_cen[j]*Dn0[j])
             
         #zeroing
         w=np.zeros(np.shape(X[0]),dtype=object)
