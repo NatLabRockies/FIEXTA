@@ -645,7 +645,8 @@ class Standardize:
 
         """
         filterdf = pd.DataFrame()
-
+        filterdf['legacy']=~np.isnan(df['wind_speed'])
+        
         # Group df by x, y, z, time bins
         df = utilities.defineLocalBins(df, self.config)
         groups = df.groupby(

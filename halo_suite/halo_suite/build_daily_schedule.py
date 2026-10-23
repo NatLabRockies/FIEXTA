@@ -32,7 +32,7 @@ path_config_lidar=askopenfilename(
     filetypes=[("All files", "*.yaml")],
     initialdir=cd,
 )
-assert os.path.isfile(path_config_lidar),  f'Invalid file "{path_config_lidar}"' 
+print(f'Invalid file "{path_config_lidar}"')
 
 time_corr=np.float64(input('Buffer time [%]: '))
 
@@ -42,10 +42,11 @@ time_corr=np.float64(input('Buffer time [%]: '))
 schedule=pd.read_excel(source) 
 filenames=schedule['Scan file'].values
 T=schedule['Total time [s]'].values
- 
+
 #read lidar config
-with open(path_config_lidar, 'r') as fid:
-    config = yaml.safe_load(fid)  
+if os.path.isfile(path_config_lidar):
+    with open(path_config_lidar, 'r') as fid:
+        config = yaml.safe_load(fid)  
 
 #file system
 save_path=os.path.join(os.path.dirname(source),os.path.basename(source)[:-5]+'.dss')
