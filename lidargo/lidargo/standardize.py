@@ -158,7 +158,7 @@ class Standardize:
             ("." + self.config.data_level_out)
             .join(self.source.split("." + self.config.data_level_in))
             .replace(self.source.split(".")[-1], self.config.name + ".nc")
-        )
+        ).replace('..','.')
         if save_path is not None:
             save_filename = os.path.join(save_path, os.path.basename(save_filename))
 
@@ -501,6 +501,7 @@ class Standardize:
                     "z",
                     "wind_speed",
                     "SNR",
+                    "beta",
                     "deltaTime",
                     "azimuth",
                     "elevation",
@@ -644,7 +645,8 @@ class Standardize:
 
         """
         filterdf = pd.DataFrame()
-
+        filterdf['legacy']=~np.isnan(df['wind_speed'])
+        
         # Group df by x, y, z, time bins
         df = utilities.defineLocalBins(df, self.config)
         groups = df.groupby(

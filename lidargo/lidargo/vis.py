@@ -43,38 +43,44 @@ def windSpeedQCfig(ds, qc_rws_range):
 
     return fig
 
-def scanFig(ds,n_subplots: int = 5):
-    """wrapper method to make scans pcolor figures"""
-    fig = plt.figure(figsize=(18, 8))
-    n_subplots=np.min([n_subplots,len(ds.scanID)])
-    
-    if ds.attrs['scan_mode'].lower()=='3d':
-        projection='3d'
-    else:
-        projection='rectilinear'
+def scanFig(ds):
+    """Plot raw (top) and QC'd (bottom) radial wind speed vs time and range,
+    with a vertical line marking the start of each scan-ID cycle (skipped for stare scans)."""
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(18, 10), sharex=True, sharey=True, layout="constrained"
+    )
 
-    if ds.attrs['scan_mode'].lower()!='stare':
-        gs = GridSpec(nrows=2, ncols=n_subplots+1, width_ratios=[6]*n_subplots+[0.5], figure=fig)
-        ax1 = fig.add_subplot(gs[0, 0],projection=projection)
-        ax2 = fig.add_subplot(gs[1, 0],projection=projection)
-        axt = [ax1] + [fig.add_subplot(gs[0, x], projection=projection) for x in range(1, n_subplots)]
-        axb = [ax2] + [fig.add_subplot(gs[1, x], projection=projection) for x in range(1, n_subplots)]
-        caxt = fig.add_subplot(gs[0, -1])
-        caxb = fig.add_subplot(gs[1, -1])
-    else:
-        gs = GridSpec(nrows=2, ncols=2, width_ratios=[30, 0.5], figure=fig)
-        axt = fig.add_subplot(gs[0, 0],projection=projection)
-        axb = fig.add_subplot(gs[1, 0],projection=projection)
-        caxt = fig.add_subplot(gs[0, -1])
-        caxb = fig.add_subplot(gs[1, -1])
+    stacked = ds[["wind_speed", "qc_wind_speed", "time"]].stack(obs=("scanID", "beamID"))
+    stacked = stacked.isel(obs=~np.isnat(stacked.time.values))
+    stacked = stacked.isel(obs=np.argsort(stacked.time.values))
 
-    fig, axt, _ = rws(ds, fig=fig, ax=axt, cax=caxt, cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]")
+    time = stacked.time.values
+    range_vals = ds.range.values
+    wind_speed_qc = stacked.wind_speed.where(stacked.qc_wind_speed == 0.0)
 
-    b1qc = ds.copy()
-    b1qc["wind_speed"] = b1qc["wind_speed"].where(b1qc.qc_wind_speed == 0.0)
+    im1 = ax1.pcolormesh(
+        time, range_vals, stacked.wind_speed.values, cmap="coolwarm", vmin=-15, vmax=15, shading="auto"
+    )
+    im2 = ax2.pcolormesh(
+        time, range_vals, wind_speed_qc.values, cmap="coolwarm", vmin=-15, vmax=15, shading="auto"
+    )
 
-    fig, axb, _ = rws(b1qc, fig=fig, ax=axb, cax=caxb, cbar_label="QC radial wind \n"+r"speed [m s$^{-1}$]")
-    
+    ax1.set_title("Raw")
+    ax2.set_title("Quality-controlled")
+    for ax, im in [(ax1, im1), (ax2, im2)]:
+        ax.set_ylabel("Range [m]")
+        fig.colorbar(im, ax=ax, label="Radial wind \n"+r"speed [m s$^{-1}$]")
+
+    ax2.set_xlabel("Time (UTC)")
+    utilities.format_time_xticks(ax2)
+
+    if ds.attrs["scan_mode"].lower() != "stare":
+        scan_starts = ds.time.min(dim="beamID").values
+        scan_starts = scan_starts[~np.isnat(scan_starts)]
+        for ax in (ax1, ax2):
+            for t in scan_starts:
+                ax.axvline(t, color="k", linewidth=0.75, alpha=0.6)
+
     fig.suptitle(
         titleGenerator(ds, "QC of data", components=["location", "date", "file"])
     )
@@ -109,8 +115,8 @@ def probabilityScatter(ds, ax=None, cax=None, fig=None, **kwargs):
         fig, ax = plt.subplots(figsize=kwargs.get("figsize", (9, 8)))
 
     prob_arange = np.arange(
-        np.log10(ds.qc_wind_speed.attrs["min_probability_range"]) - 1,
-        np.log10(ds.qc_wind_speed.attrs["max_probability_range"]) + 1,
+        np.log10(ds.qc_wind_speed.attrs["min_probability_range"]+10**-10) - 1,
+        np.log10(ds.qc_wind_speed.attrs["max_probability_range"]+10**-10) + 1,
     )
 
     sp = ax.scatter(
@@ -190,195 +196,6 @@ def probabilityVSrws(ds, qc_rws_range, ax=None, fig=None, **kwargs):
     ax.grid(True)
 
     return ax
-
-def rws(ds, ax=None, fig=None, cax=None, cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]", **kwargs):
-    """
-    Plot radial wind speed (RWS) data in different projections based on scan type.
-
-    Parameters:
-    -----------
-    ds : xarray.Dataset
-        Dataset containing the RWS data.
-    """
-
-    if ds.attrs["scan_mode"].lower() == "ppi":
-        fig, ax, cbar = ppi(ds, ax=ax, fig=fig, cax=cax, cbar_label=cbar_label)
-    elif ds.attrs["scan_mode"].lower() == "rhi":
-        fig, ax, cbar = rhi(ds, ax=ax, fig=fig, cax=cax ,cbar_label=cbar_label)
-    elif ds.attrs["scan_mode"].lower() == "3d":
-        fig, ax, cbar = volumetric(ds, ax=ax, fig=fig, cax=cax, cbar_label=cbar_label)
-    elif ds.attrs["scan_mode"].lower() == "stare":
-        fig, ax, cbar = stare(ds, ax=ax, fig=fig, cax=cax, cbar_label=cbar_label)
-    else:
-        raise ValueError(f"Unsupported scan type: {ds.attrs['scan_mode']}")
-
-    return fig, ax, cbar
-
-
-def ppi(ds, n_subplots: int = 5, ax=None, fig=None, cax=None, cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]", **kwargs):
-    """Plot plan position indicator (PPI) for radial wind speed data."""
-
-    n_subplots=np.min([n_subplots,len(ds.scanID)])
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(
-            1,
-            n_subplots,
-            figsize=kwargs.get("figsize", (9, 8)),
-        )
-
-    scans = np.linspace(
-        ds.scanID.values.min(), ds.scanID.values.max(), len(ax), dtype=int
-    )
-
-    for i, scan in enumerate(scans):
-        subset = ds.isel(scanID=scan)
-        im = ax[i].pcolormesh(
-            subset.x, subset.y, subset.wind_speed, cmap="RdBu_r", shading="auto"
-        )
-        ax[i].set_xlabel(r"$x$ [m]")
-        if i == 0:
-            ax[i].set_ylabel(r"$y$ [m]")
-        else:
-            ax[i].set_yticklabels([])
-        ax[i].set_aspect("equal")
-        add_time_title(ax[i], ds.time.sel(scanID=scan))
-        ax[i].grid(True)
-        
-    utilities.same_axis(ax)
-    
-    if cax is None:
-        fig.tight_layout()
-        cbar = add_colorbar(fig, ax[-1], im, cbar_label)
-    else:
-        cbar = plt.colorbar(im, cax=cax, label=cbar_label)
-        new_pos=[cax.get_position().x0,
-                          ax[-1].get_position().y0,
-                          cax.get_position().width,
-                          ax[-1].get_position().height]
-        cax.set_position(new_pos) 
-
-    return fig, ax, cbar
-
-def rhi(ds, n_subplots: int = 5, cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]",ax=None, fig=None, cax=None, **kwargs):
-    """Plot range height indicator (RHI) for radial wind speed data."""
-    
-    n_subplots=np.min([n_subplots,len(ds.scanID)])
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(
-            1,
-            n_subplots,
-            figsize=kwargs.get("figsize", (9, 8)),
-        )
-
-    scans = np.linspace(
-        ds.scanID.values.min(), ds.scanID.values.max(),  len(ax), dtype=int
-    )
-
-    for i, scan in enumerate(scans):
-        subset = ds.isel(scanID=scan)
-        im = ax[i].pcolormesh(
-            subset.x, subset.z, subset.wind_speed, cmap="RdBu_r", shading="auto"
-        )
-        ax[i].set_xlabel(r"$x$ [m]")
-        if i == 0:
-            ax[i].set_ylabel(r"$z$ [m]")
-        else:
-            ax[i].set_yticklabels([])
-        ax[i].set_aspect("equal")
-        add_time_title(ax[i], ds.time.sel(scanID=scan))
-        ax[i].grid(True)
-        
-    utilities.same_axis(ax)
-
-    if cax is None:
-        fig.tight_layout()
-        cbar = add_colorbar(fig, ax[-1], im, cbar_label)
-    else:
-        
-        cbar = plt.colorbar(im, cax=cax, label=cbar_label)
-        new_pos=[cax.get_position().x0,
-                          ax[-1].get_position().y0,
-                          cax.get_position().width,
-                          ax[-1].get_position().height]
-
-        cax.set_position(new_pos) 
-
-    return fig, ax, cbar
-
-def volumetric(ds, n_subplots: int = 5, cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]",ax=None, fig=None, cax=None, **kwargs):
-    """Plot 3D visualization of radial wind speed data."""
-    
-    n_subplots=np.min([n_subplots,len(ds.scanID)])
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(
-            1,
-            n_subplots,
-            figsize=kwargs.get("figsize", (9, 8)),
-        )
-
-    scans = np.linspace(
-        ds.scanID.values.min(), ds.scanID.values.max(), len(ax), dtype=int
-    )
-    
-    for i, scan in enumerate(scans):
-        subset = ds.isel(scanID=scan)
-        sc=rws3Dscatter(ax[i], subset.x.values, subset.y.values, subset.z.values, subset.wind_speed.values)
-        add_time_title(ax[i], subset.time)
-            
-        ax[i].set_xlabel(r"$x$ [m]")
-        if i ==  len(ax)-1:
-            ax[i].set_ylabel(r"$y$ [m]")
-            ax[i].set_zlabel(r"$z$ [m]")
-        else:
-            ax[i].set_yticklabels([])
-            ax[i].set_zticklabels([])
-    
-    utilities.same_axis(ax)
-    
-    if sc is not None:
-        if cax is None:
-            fig.tight_layout()
-            cbar = add_colorbar(fig, ax[-1], sc,label=cbar_label)
-        else:
-            cbar = plt.colorbar(sc, cax=cax,label=cbar_label)
-            new_pos=[cax.get_position().x0+0.03,
-                              ax[-1].get_position().y0,
-                              cax.get_position().width,
-                              ax[-1].get_position().height]
-            
-            cax.set_position(new_pos) 
-    else:
-        cbar=None
-
-    return fig, ax, cbar
-
-def stare(ds,cbar_label="Radial wind \n"+r"speed [m s$^{-1}$]",ax=None, fig=None, cax=None, **kwargs):
-    """Plot stare visualization for radial wind speed data."""
-    
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(
-            1,
-            1,
-            figsize=kwargs.get("figsize", (9, 8)),
-        )
-    
-    im = ax.pcolormesh(
-        ds.time, ds.range, ds.wind_speed.squeeze(), cmap="RdBu_r", shading="auto"
-    )
-    ax.set_xlabel(r"Time (UTC)")
-    ax.set_ylabel(r"Range [m]")
-    ax.grid(True)
-    
-    xformatter = mdates.DateFormatter("%H:%M")
-    ax.xaxis.set_major_formatter(xformatter)
-
-    if cax is None:
-        fig.tight_layout()
-        cbar = add_colorbar(fig, ax, im, cbar_label)
-    else:
-        cbar = plt.colorbar(im, cax=cax, label=cbar_label)
-        
-    return fig, ax, cbar
 
 def angScatter(dsInput, dsStandardized, ax=None, fig=None, **kwargs):
     """Scatter plot showing observed and standardized azimuth and elevation angles"""
@@ -497,53 +314,6 @@ def anghist_2D(dsInput,ds,which_angle='azimuth',ax=None, fig=None, **kwargs):
 
     return fig, ax
 
-def rws3Dscatter(ax, x, y, z, f,n_max=10000):
-    """Helper function for 3D scatter plotting."""
-    
-    #exclude nans
-    real = ~np.isnan(x+y+z+f)
-    
-    if np.sum(real)>0:
-        #subsample if too many points
-        skip = int(np.sum(real) / n_max) if np.sum(real) > n_max else 1
-        
-        #plot
-        sc = ax.scatter(
-            x[real][::skip],
-            y[real][::skip],
-            z[real][::skip],
-            s=2,
-            c=f[real][::skip],
-            cmap="coolwarm",
-            vmin=np.nanpercentile(f, 5) - 1,
-            vmax=np.nanpercentile(f, 95) + 1,
-        )
-    
-        xlim = [np.nanmin(x), np.nanmax(x)]
-        ylim = [np.nanmin(y), np.nanmax(y)]
-        zlim = [np.nanmin(z), np.nanmax(z)]
-        
-        ax.set_box_aspect((np.diff(xlim)[0], np.diff(ylim)[0], np.diff(zlim)[0]))
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_zlim(zlim)
-    else:
-        sc=None
-    
-    return sc
-
-def add_colorbar(fig, ax, mappable, label, position_adjust=0.01):
-    """Helper function to add colorbar."""
-    cax = fig.add_axes(
-        [
-            ax.get_position().x0 + ax.get_position().width + position_adjust,
-            ax.get_position().y0,
-            0.015,
-            ax.get_position().height,
-        ]
-    )
-    return plt.colorbar(mappable, cax=cax, label=label)
-
 def titleGenerator(ds, inputString: str = None, components=["location", "date"]):
     """Build title for figures"""
     componentDict = {
@@ -555,10 +325,3 @@ def titleGenerator(ds, inputString: str = None, components=["location", "date"])
     title = [inputString] + [componentDict[comp] for comp in components]
 
     return " ".join(title)
-
-def add_time_title(ax, time):
-    """Helper function to add time-only title."""
-    ax.set_title(
-        f"{utilities.nanmin_time(time,'%H:%M:%S')} - "
-        f"{utilities.nanmax_time(time,'%H:%M:%S')}"
-    )

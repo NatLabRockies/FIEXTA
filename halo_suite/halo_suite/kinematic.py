@@ -4,13 +4,18 @@ Characterize kinematic of scanning head
 """
 
 import os
-from matplotlib import pyplot as plt
 import numpy as np
 import yaml
 from halo_suite.utilities import scan_file_compiler, read_hpl
 from scipy.optimize import curve_fit
 from halo_suite import halo_simulator as hls
 import glob
+import matplotlib
+from matplotlib import pyplot as plt
+matplotlib.rcParams['font.family'] = 'serif'
+matplotlib.rcParams['mathtext.fontset'] = 'cm'
+matplotlib.rcParams['font.size'] = 12
+plt.close('all')
 S_azi=None
 Dt_p=None
 plt.close('all')

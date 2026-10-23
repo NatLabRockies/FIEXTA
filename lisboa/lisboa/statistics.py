@@ -33,19 +33,20 @@ class statistics:
     @with_logging    
     def calculate_weights(
             self,
-            x_exp: list,
-            f=None):
+            x_exp0: list,
+            f0=None):
            
         #reject non valid points
         n=len(self.config.Dn0) 
-        if f is None:
-            real=~np.isnan(np.sum(np.array(x_exp),axis=0))
+        if f0 is None:
+            real=~np.isnan(np.sum(np.array(x_exp0),axis=0))
         else:
-            real=~np.isnan(np.sum(np.array(x_exp),axis=0)+f)
-            f=f[real]
-            
+            real=~np.isnan(np.sum(np.array(x_exp0),axis=0)+f0)
+            f=f0[real]
+        
+        x_exp=[]
         for j in range(n):
-            x_exp[j]=x_exp[j][real]
+            x_exp.append(x_exp0[j][real])
 
         #initialize variables
         Dn0=np.array(self.config.Dn0)   

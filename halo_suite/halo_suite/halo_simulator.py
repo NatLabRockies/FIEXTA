@@ -92,7 +92,11 @@ class halo_simulator:
         azi_all=[]
         ele_all=[]
        
-        t_sim=[]
+        if mode=='SSM':
+            t_sim=[0]
+        elif mode=='CSM':
+            t_sim=[]
+            
         azi_sim=[]
         ele_sim=[]
         
@@ -162,11 +166,11 @@ class halo_simulator:
         ele_all=ele_all[1:]
         t_all=t_all[1:]-t_all[1]
         
-        azi_sim=azi_sim%360
-        
         if mode=='SSM':
             azi_sim=azi.copy()
             ele_sim=ele.copy()
+            
+        azi_sim=azi_sim%360
             
         return t_sim,azi_sim,ele_sim,t_all,azi_all,ele_all
     

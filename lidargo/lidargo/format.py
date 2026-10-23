@@ -4,6 +4,7 @@ Convert raw lidar files to netCDF in WDH-compatible netCDF format.
 Part of this script is readapted from https://github.com/a2edap/ingest-awaken/tree/main/pipelines/lidar/lidar_halo_xrp under license LICENSE_BSD-2_Batelle.
 '''
 import os
+import time
 import xarray as xr
 import numpy as np
 import re
@@ -107,6 +108,36 @@ class Format:
             if make_figures:
                 self.plot_raw_data(outputData,save_figures)
         
+    def _copy_raw_file(self,source,dest,stability_timeout=30,poll_interval=1):
+        '''
+        Copy source to dest, guarding against two failure modes seen when the
+        source file is still being written by another process (e.g. an
+        instrument data-transfer job) at the time of the copy:
+        - the file grows mid-copy, so wait until its size is unchanged across
+          two polls before starting
+        - shutil.copyfile's Linux sendfile() fast path can report EOF (and so
+          silently produce a truncated copy, with no exception raised) if the
+          source shrinks/changes underneath it; verify sizes match afterward
+        '''
+        size=os.path.getsize(source)
+        elapsed=0
+        while elapsed<stability_timeout:
+            time.sleep(poll_interval)
+            elapsed+=poll_interval
+            new_size=os.path.getsize(source)
+            if new_size==size:
+                break
+            size=new_size
+        else:
+            self.logger.log(f"{source} did not stabilize within {stability_timeout} s, copying anyway",level="warning")
+
+        shutil.copyfile(source,dest)
+
+        dest_size=os.path.getsize(dest)
+        if dest_size!=size:
+            os.remove(dest)
+            raise RuntimeError(f"Copy of {source} to {dest} is truncated ({dest_size} of {size} bytes); source may have been modified during copy")
+
     @with_logging
     def rename_halo_xr(self,source,site,z_id,save_path=None,replace=False):
         if save_path is None:
@@ -149,7 +180,7 @@ class Format:
             
         save_filename=site+'.lidar.'+z_id+'.'+'00'+'.'+date_part+'.'+time_part+'.'+scan_type+os.path.splitext(source)[1]
         if os.path.exists(os.path.join(save_path,save_filename))==False or replace==True:
-            shutil.copyfile(source, os.path.join(save_path,save_filename))
+            self._copy_raw_file(source, os.path.join(save_path,save_filename))
 
         return os.path.join(os.path.join(save_path,save_filename))
     

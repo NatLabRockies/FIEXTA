@@ -265,6 +265,18 @@ def add_attributes(ds):
         "wind_speed": {
             "long_name": "Line-of-sight velocity",
             "description": "Line-of-sight velocity.",
+            "units": "m/s",
+            "ancilary_variables": "qc_wind_speed",
+        },
+        "SNR": {
+            "long_name": "Signal-to-noise ratio",
+            "description": "Signal-to-noise ratio.",
+            "units": "dB",
+        },
+        "beta": {
+            "long_name": "Attenuated backscatter coefficient",
+            "description": "Attenuated backscatter coefficient.",
+            "units": "1/(m sr)",
             "ancilary_variables": "qc_wind_speed",
         },
         "rws_norm": {

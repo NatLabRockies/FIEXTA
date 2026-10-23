@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 import re
+import numpy as np
 
 @dataclass
 class LidarConfigFormat:
@@ -127,8 +128,13 @@ class LidarConfigStand:
             raise ValueError("start_date must be before end_date")
 
         # Validate project and name format
-        self._validate_string_format(self.project, r"^[a-zA-Z0-9_.-]+$", "project")
-        self._validate_string_format(self.name, r"^[a-zA-Z0-9_.-]+$", "name")
+        if 'str' not in str(type(self.project)):
+            if np.isnan(self.project): self.project=''
+        self._validate_string_format(self.project, r"^[a-zA-Z0-9_.-]*$", "project")
+        
+        if 'str' not in str(type(self.name)):
+            if np.isnan(self.name): self.name=''
+        self._validate_string_format(self.name, r"^[a-zA-Z0-9_.-]*$", "name")
 
         # Validate angle steps and tolerances
         if self.min_azi_step >= self.max_azi_step:
