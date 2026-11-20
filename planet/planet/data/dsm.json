@@ -1,0 +1,20 @@
+{
+ "zoom": 16,
+ "px0": 3483158,
+ "py0": 6356529,
+ "width": 2183,
+ "height": 2183,
+ "source": "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/CO_DRCOG_1_2020/",
+ "product": "Highest non-noise lidar return per pixel (USGS 3DEP point cloud)",
+ "excluded_classes": [
+  7,
+  13,
+  14,
+  18
+ ],
+ "center": [
+  39.899382195986675,
+  -105.23610133155789
+ ],
+ "half_width_m": 2000
+}
