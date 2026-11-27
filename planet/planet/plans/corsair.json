@@ -1,0 +1,154 @@
+{
+ "format": "dual-doppler-plan",
+ "version": 1,
+ "name": "corsair",
+ "saved": "2026-11-27T18:18:50.553Z",
+ "view": {
+  "center": [
+   39.902329,
+   -105.226192
+  ],
+  "zoom": 14
+ },
+ "lidars": [
+  [
+   39.907862,
+   -105.233893
+  ],
+  [
+   39.908699,
+   -105.223886
+  ]
+ ],
+ "settings": {
+  "cfg": "dual",
+  "v": "WS",
+  "wdMode": "single",
+  "layer": "main",
+  "blkOn": true,
+  "z": [
+   0,
+   50,
+   100
+  ],
+  "hLim": [
+   1787,
+   1866
+  ],
+  "zref": null,
+  "vmax": {
+   "U": 1,
+   "V": 1,
+   "WS": 1,
+   "WD": 5
+  },
+  "opacity": 0.5,
+  "ws": 10,
+  "wd": 270,
+  "srws": 0.1,
+  "sw": 1,
+  "rmin": 100,
+  "rmax": 3000,
+  "h1": 1,
+  "e1": 1.5,
+  "h2": 1,
+  "e2": 1.7,
+  "dmin1": 2000,
+  "dmin2": 2000,
+  "azmin1": 150,
+  "azmax1": 269,
+  "azmin2": 200,
+  "azmax2": 270
+ },
+ "targets": [
+  {
+   "name": "Transmission tower 1",
+   "lat": 39.906416,
+   "lon": -105.236023,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 2",
+   "lat": 39.904755,
+   "lon": -105.236033,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 3",
+   "lat": 39.903101,
+   "lon": -105.23603,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 4",
+   "lat": 39.90145,
+   "lon": -105.236012,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 5",
+   "lat": 39.89896,
+   "lon": -105.236161,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 6",
+   "lat": 39.897351,
+   "lon": -105.236165,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 7",
+   "lat": 39.89574,
+   "lon": -105.236176,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 8",
+   "lat": 39.894117,
+   "lon": -105.236177,
+   "fromSitesFile": true
+  },
+  {
+   "name": "Transmission tower 9",
+   "lat": 39.892549,
+   "lon": -105.236136,
+   "fromSitesFile": true
+  }
+ ],
+ "instruments": [
+  {
+   "name": "ANL 10-m met",
+   "marker": "triangle",
+   "color": "#ffd60a",
+   "lat": 39.892547,
+   "lon": -105.236299
+  },
+  {
+   "name": "NLR 15-m met",
+   "marker": "triangle",
+   "color": "#ffd60a",
+   "lat": 39.898973,
+   "lon": -105.236278
+  }
+ ],
+ "comments": [
+  {
+   "text": "Lidar 2 is currenlty blocked S-SW.\n",
+   "lat": 39.908623,
+   "lon": -105.222244
+  },
+  {
+   "text": "The first tower sits close to the high error zone.",
+   "lat": 39.906414,
+   "lon": -105.237522
+  }
+ ],
+ "sources": {
+  "sites": "data/FC_DLR_sites.xlsx",
+  "dsm": {
+   "png": "data/dsm.png",
+   "json": "data/dsm.json"
+  }
+ }
+}
