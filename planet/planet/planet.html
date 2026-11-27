@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLANET</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1d2330; --muted: #5f6878; --line: #dde1e8; --accent: #1f6feb;
+  --l1: #2b6cff; --l2: #ff7a1a; --input: #f5f7fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161a21; --fg: #e6e9ef; --muted: #9aa3b2; --line: #2c323d; --accent: #5b9bff; --input: #1f242d; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { display: flex; }
+#panel { width: 330px; flex: none; height: 100%; overflow-y: auto; padding: 14px 16px; border-right: 1px solid var(--line); }
+#map { flex: 1; height: 100%; }
+#map.placing { cursor: crosshair; }
+h1 { font-size: 16px; margin: 0 0 2px; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+.sub { color: var(--muted); margin: 0 0 6px; }
+.row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+.row label { flex: 1; }
+input[type=number], input[type=text] { width: 92px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); color: var(--fg); font: inherit; }
+input.wide { width: 100%; }
+select { padding: 3px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); color: var(--fg); font: inherit; }
+.ins-label { padding: 1px 5px; font: 600 11px/1.3 system-ui, sans-serif; }
+.cm-pop textarea { width: 100%; box-sizing: border-box; font: 12px/1.4 system-ui, sans-serif; resize: vertical; }
+.cm-tip { width: max-content; max-width: 340px; white-space: pre-wrap; }
+input[type=file] { font: inherit; color: var(--fg); }
+button { padding: 4px 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--input); color: var(--fg); font: inherit; cursor: pointer; }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg button { flex: 1; border: 0; border-radius: 0; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 2px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; white-space: nowrap; }
+.note { color: var(--muted); font-size: 12px; }
+.tip { display: none; }
+#tip { display: none; position: fixed; z-index: 2000; max-width: 320px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); box-shadow: 0 2px 10px rgba(0,0,0,.25); font-size: 12px; line-height: 1.45; pointer-events: none; }
+.has-tip:not(button) { cursor: help; }
+h2.has-tip::after { content: " ⓘ"; text-transform: none; }
+#cbar, #hbar { height: 12px; border-radius: 2px; margin-top: 4px; }
+#cticks, #hticks { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+#wdArrow { width: 34px; height: 34px; flex: none; }
+.lidar-icon { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-weight: 700; text-align: center; line-height: 20px; border: 2px solid #fff; box-shadow: 0 0 3px #000; }
+.tgt-icon { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #000; display: flex; align-items: center; justify-content: center;
+  font: 700 10px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; box-shadow: 0 0 3px rgba(0,0,0,.6); }
+.tgt-icon.manual { border-style: dashed; }
+.hist { background: var(--bg); color: var(--fg); border-radius: 6px; padding: 8px 10px 4px; box-shadow: 0 1px 6px rgba(0,0,0,.4); }
+.hist svg { display: block; }
+.hist text { fill: currentColor; font: 11px system-ui, sans-serif; }
+@media (max-width: 700px) {
+  body { flex-direction: column-reverse; }
+  #panel { width: 100%; height: 50%; border-right: 0; border-top: 1px solid var(--line); }
+  #map { height: 50%; }
+}
+</style>
+</head>
+<body>
+<aside id="panel">
+  <h1>Dual-Doppler Planner</h1>
+  <p class="sub">Drag the lidars on the map. The error map, averaged over the selected heights, updates as you move them.</p>
+
+  <h2 id="hFile">File</h2>
+  <div class="row"><button id="connectDir">Connect project folder</button><span class="note" id="dirMsg"></span></div>
+  <div class="row"><label>Plan name</label><input type="text" id="planName" placeholder="plan" style="width:170px"></div>
+  <div class="row"><button id="openPlan">Open plan…</button><button id="savePlan">Save plan</button><button id="clearMap">Clear map</button></div>
+  <div class="tip" data-for="#clearMap">Removes all targets (including those from the sites file), instruments and comments from the map. Lidars and settings are kept.</div>
+  <div class="note" id="planMsg"></div>
+  <input type="file" id="planFile" accept=".json,application/json" hidden>
+  <div class="tip" data-for="#hFile, #connectDir">Connect the planner folder (the one holding planet.html) once per browser session. "Save plan" then writes plans/<i>name</i>.json and plans/<i>name</i>.png, and "Open plan…" restores a plan together with the sites and surface-model files it was made with, read again from their paths in the folder. For a new plan, select those files under "Sites file" and "Surface model file"; pick them from inside the connected folder so saved plans can find them. Needs Chrome or Edge.</div>
+
+  <h2>Sites file</h2>
+  <input type="file" id="sitesFile" accept=".xlsx,.xls" class="wide">
+  <div class="note" id="sitesMsg">Select an .xlsx with columns Name, Latitude, Longitude (optional Type = Target).</div>
+
+  <h2>Surface model file</h2>
+  <input type="file" id="dsmFile" accept=".png,.json" multiple class="wide">
+  <div class="note" id="dsmMsg">Select dsm.png and dsm.json together (both made by make_dsm.py).</div>
+
+  <h2>Lidars</h2>
+  <div class="seg" id="cfgSeg" style="margin-bottom:6px"><button data-c="single">Single lidar</button><button data-c="dual">Dual Doppler</button></div>
+  <div class="row"><span class="dot" style="background:var(--l1)"></span><b>1</b>
+    <input type="number" id="l1lat" step="0.0001" title="Latitude"><input type="number" id="l1lon" step="0.0001" title="Longitude">
+    <button data-place="0">Place</button></div>
+  <div class="row dual-only"><span class="dot" style="background:var(--l2)"></span><b>2</b>
+    <input type="number" id="l2lat" step="0.0001" title="Latitude"><input type="number" id="l2lon" step="0.0001" title="Longitude">
+    <button data-place="1">Place</button></div>
+  <div class="note dual-only" id="baseline"></div>
+  <table id="lidTbl" style="margin-top:6px">
+    <tr><th></th><th>Height AGL [m]</th><th>Elevation [°]</th><th>Ignore obstacles within [m]</th><th>Ground [m ASL]</th></tr>
+    <tr><td><span class="dot" style="background:var(--l1)"></span>1</td><td><input type="number" id="h1" step="0.5" min="0" style="width:60px"></td>
+      <td><input type="number" id="e1" step="0.1" min="-10" max="90" style="width:60px"></td>
+      <td><input type="number" id="dmin1" step="5" min="0" style="width:60px"></td><td id="g1">–</td></tr>
+    <tr class="dual-only"><td><span class="dot" style="background:var(--l2)"></span>2</td><td><input type="number" id="h2" step="0.5" min="0" style="width:60px"></td>
+      <td><input type="number" id="e2" step="0.1" min="-10" max="90" style="width:60px"></td>
+      <td><input type="number" id="dmin2" step="5" min="0" style="width:60px"></td><td id="g2">–</td></tr>
+  </table>
+  <table id="secTbl" style="margin-top:6px">
+    <tr><th>Scan sector</th><th>Az min [°]</th><th>Az max [°]</th></tr>
+    <tr><td><span class="dot" style="background:var(--l1)"></span>1</td><td><input type="number" id="azmin1" step="1" style="width:60px"></td><td><input type="number" id="azmax1" step="1" style="width:60px"></td></tr>
+    <tr class="dual-only"><td><span class="dot" style="background:var(--l2)"></span>2</td><td><input type="number" id="azmin2" step="1" style="width:60px"></td><td><input type="number" id="azmax2" step="1" style="width:60px"></td></tr>
+  </table>
+  <div class="tip" data-for="#secTbl">Azimuth in degrees clockwise from north, swept from Az min to Az max (e.g. 300 to 60 crosses north). 0 to 360 is a full scan.</div>
+  <div id="rangeRows"><div class="row"><label>Min range [m]</label><input type="number" id="rmin" step="10" min="0"></div>
+  <div class="row"><label>Max range [m]</label><input type="number" id="rmax" step="100" min="1"></div></div>
+  <div class="tip" data-for="#rangeRows">Dual Doppler: slant range from each lidar to each height z. Single lidar: horizontal distance.</div>
+  <div class="row" id="blkRow"><label><input type="checkbox" id="blkOn"> Limit range by terrain blockage</label></div>
+  <div class="note" id="terrainMsg"></div>
+  <div class="tip" data-for="#blkRow">Blockage: along each azimuth (1° steps) the range is cut at the first distance where the surface rises above the beam. The beam leaves at the given height above the ground at the lidar, at the given elevation angle, including Earth curvature with standard 4/3-radius refraction [Doviak and Zrnić, 1993]. Surface: inside the surface-model area (data/dsm.png, made by make_dsm.py), the highest non-noise return per ~2 m pixel of the USGS 3DEP lidar point cloud, so buildings, trees and towers at survey time are included (2 m along-beam steps). Outside it, bare-earth AWS Terrain Tiles (Mapzen/Tilezen Terrarium), sourced in the contiguous US from USGS 3DEP 1/3 arc-second (~10 m, 1/9 arc-second in places) and elsewhere from SRTM/GMTED (10 m steps). Ground elevations and beam heights above ground always use bare earth. Surface points closer to a lidar than its "Ignore obstacles within" distance are skipped, e.g. to drop nearby structures that the lidar will be mounted above or will not actually see. Dashed outlines show the resulting coverage.</div>
+
+  <h2>Map layer</h2>
+  <div class="seg" id="layerSeg"><button data-l="main">Coverage / error</button><button data-l="surf">Surface height</button></div>
+  <div class="row"><label>Overlay opacity</label><input type="range" id="opacity" min="0" max="1" step="0.05" style="width:120px"></div>
+  <div id="surfCtl">
+    <div id="hbar"></div><div id="hticks"></div>
+    <div class="row"><label>Color limits [m]</label><input type="number" id="hmin" step="1" style="width:60px" title="Min"><input type="number" id="hmax" step="1" style="width:60px" title="Max"><button id="hAuto">Auto</button></div>
+    <div class="row"><button id="zeroBtn">Set zero at point</button><button id="zeroClr">Use sea level</button></div>
+    <div class="note" id="surfMsg"></div>
+    <div class="note" id="hCursor"></div>
+    <div class="tip" data-for='[data-l="surf"], #surfCtl'>Height of the surface used for blockage (surface model where available, bare-earth terrain elsewhere), relative to sea level or to the surface at a point you click after "Set zero at point". Colors stretch over the visible map area unless you set the limits; heights outside the limits take the end colors.</div>
+  </div>
+
+  <div class="dual-only">
+  <h2 id="hErr">Error variable</h2>
+  <div class="seg" id="varSeg">
+    <button data-v="U">σ<sub>U</sub></button><button data-v="V">σ<sub>V</sub></button>
+    <button data-v="WS">σ<sub>WS</sub></button><button data-v="WD">σ<sub>WD</sub></button>
+  </div>
+  <div id="cbar"></div><div id="cticks"></div>
+  <div class="row"><label>Color scale max</label><input type="number" id="vmax" step="0.1" min="0.01"></div>
+  </div>
+
+  <div class="dual-only">
+  <h2>Wind <span style="text-transform:none">(affects σ<sub>WS</sub>, σ<sub>WD</sub>)</span></h2>
+  <div class="row"><label>Wind speed [m s⁻¹]</label><input type="number" id="ws" step="0.5" min="0.1"></div>
+  <div class="seg" id="wdSeg"><button data-m="single">Single direction</button><button data-m="all">All directions (mean)</button></div>
+  <div class="row" id="wdRow">
+    <svg id="wdArrow" viewBox="-17 -17 34 34"><circle r="15" fill="none" stroke="currentColor" stroke-opacity=".3"/>
+      <g id="wdArrowG"><path d="M0,-13 L0,11 M-5,5 L0,11 L5,5" stroke="currentColor" stroke-width="2.2" fill="none"/></g></svg>
+    <input type="range" id="wd" min="0" max="355" step="5" style="flex:1">
+    <span id="wdVal" style="width:38px;text-align:right"></span>
+  </div>
+  <div class="tip" data-for="#wdSeg, #wdRow">Meteorological convention: the direction the wind blows from. "All directions" averages 0–350° in 10° bins, as in the site-selector script.</div>
+  </div>
+
+  <h2 class="dual-only">Measurement errors</h2>
+  <div class="row dual-only"><label>σ<sub>rws</sub> (line-of-sight) [m s⁻¹]</label><input type="number" id="srws" step="0.05" min="0"></div>
+  <div class="row dual-only"><label>σ<sub>w</sub> (vertical velocity) [m s⁻¹]</label><input type="number" id="sw" step="0.1" min="0"></div>
+  <div class="row dual-only"><label>Heights z [m]</label><input type="text" id="zs" style="width:130px"></div>
+
+  <div class="dual-only">
+  <h2>At cursor</h2>
+  <table id="cursorTbl"><tr><th></th><th>σ<sub>U</sub></th><th>σ<sub>V</sub></th><th>σ<sub>WS</sub></th><th>σ<sub>WD</sub></th></tr>
+    <tr><td>value</td><td>–</td><td>–</td><td>–</td><td>–</td></tr></table>
+  </div>
+
+  <h2 id="hTgt">Targets</h2>
+  <div class="row"><button id="addTgt">Add targets</button><button id="clrTgt">Clear</button></div>
+  <div class="tip" data-for="#hTgt, #addTgt, #clrTgt">Sites from the sites file have a solid outline. Click the map to add your own targets (dashed outline), drag them to move, and right-click one to remove it. "Clear" removes only your own targets.</div>
+  <table id="tgtTbl"></table>
+
+  <h2 id="hIns">Instruments</h2>
+  <div class="row"><input type="text" id="insName" placeholder="Name" style="flex:1;min-width:0;width:0"><select id="insShape" title="Marker"></select><input type="color" id="insColor" value="#ffd60a" title="Marker color" style="width:28px;height:24px;padding:0;border:0;background:none"><span id="insPreview"></span><button id="addIns">Place</button></div>
+  <div class="tip" data-for="#hIns, #addIns">Type a name, pick a marker and color, press "Place" and click the map. Drag to move; right-click or ✕ to remove.</div>
+  <table id="insTbl"></table>
+
+  <h2 id="hCm">Comments</h2>
+  <div class="row"><button id="addCm">Add comment</button></div>
+  <div class="tip" data-for="#hCm, #addCm">Press "Add comment" and click the map, then type the comment in the box that opens. Hover over a comment to read it, click it to edit or delete it, and drag it to move it. A comment left empty is removed when its box closes. Comments are saved in the plan and drawn on the plan PNG.</div>
+
+  <h2>Map</h2>
+  <div class="row"><input type="text" id="goto" class="wide" placeholder="lat, lon"><button id="gotoBtn">Go</button></div>
+  <div class="row"><button id="share">Copy link to this layout</button><span class="note" id="shareMsg"></span></div>
+  <p class="tip" data-for="#hErr, #varSeg">Error model: linear error propagation for two-lidar retrieval of horizontal wind with w ≈ 0, independent line-of-sight noise, and shared vertical-velocity contamination [Stawiarski et al., 2013]. Units: σ<sub>U</sub>, σ<sub>V</sub>, σ<sub>WS</sub> in m s⁻¹; σ<sub>WD</sub> in degrees.</p>
+</aside>
+<div id="map"></div>
+
+<script>
+const EPS = 1e-16, DEG = 180 / Math.PI;
+const VMAX0 = { U: 1, V: 1, WS: 1, WD: 5 };
+const VIDX = { U: 0, V: 1, WS: 2, WD: 3 };
+const NLEV = 20;
+// matplotlib RdYlGn_r anchor colors (ColorBrewer)
+const CMAP = ['#006837','#1a9850','#66bd63','#a6d96a','#d9ef8b','#ffffbf','#fee08b','#fdae61','#f46d43','#d73027','#a50026']
+  .map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)));
+
+function cmap(t) {
+  const s = Math.min(Math.max(t, 0), 1) * (CMAP.length - 1), i = Math.min(Math.floor(s), CMAP.length - 2), f = s - i;
+  return CMAP[i].map((c, k) => Math.round(c + f * (CMAP[i + 1][k] - c)));
+}
+// matplotlib viridis anchor colors [van der Walt and Smith, 2015]
+const VIRIDIS = ['#440154','#482878','#3e4989','#31688e','#26828e','#1f9e89','#35b779','#6ece58','#b5de2b','#fde725']
+  .map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)));
+function viridis(t) {
+  const s = Math.min(Math.max(t, 0), 1) * (VIRIDIS.length - 1), i = Math.min(Math.floor(s), VIRIDIS.length - 2), f = s - i;
+  return VIRIDIS[i].map((c, k) => Math.round(c + f * (VIRIDIS[i + 1][k] - c)));
+}
+const LEVCOL = Array.from({ length: NLEV }, (_, i) => cmap((i + 0.5) / NLEV));
+function levelColor(v, vmax) {
+  return LEVCOL[Math.min(Math.max(Math.floor(v / vmax * NLEV), 0), NLEV - 1)];
+}
+
+const S = {
+  lidars: [null, null], targets: [], instruments: [], comments: [], src: { sites: null, dsm: null }, v: 'U', ws: 10, wdMode: 'single', wd: 270,
+  srws: 0.1, sw: 1, rmin: 100, rmax: 3000, h1: 3, e1: 2, h2: 3, e2: 2, dmin1: 0, dmin2: 0, blkOn: true, blk: [null, null], ground: [NaN, NaN], z: [0, 50, 100, 150, 200], cfg: 'dual', layer: 'main', zref: null, hLim: null, azmin1: 0, azmax1: 360, azmin2: 0, azmax2: 360, vmax: { ...VMAX0 }, opacity: 0.5, mode: null,
+};
+
+// Dual-Doppler error propagation; mirrors dual_doppler_reconstruction in CORSAIR_analysis/utils.py [Stawiarski et al., 2013]
+const G = { sU: [], sV: [], sUV: [] };
+const GREEN = [26, 152, 80];
+function cellErrors(dx1, dy1, dx2, dy2, P, out) {
+  const nz = P.z.length, vr = P.srws * P.srws, vw = P.sw * P.sw;
+  if ((P.blk && (blocked(P.blk[0], dx1, dy1) || blocked(P.blk[1], dx2, dy2))) || !inSector(P.sec[0], dx1, dy1) || !inSector(P.sec[1], dx2, dy2)) { out[0] = out[1] = out[2] = out[3] = NaN; return out; }
+  let aU = 0, nU = 0, aV = 0, nV = 0;
+  for (let k = 0; k < nz; k++) {
+    const z = P.z[k];
+    const r1 = Math.sqrt(dx1 * dx1 + dy1 * dy1 + z * z), r2 = Math.sqrt(dx2 * dx2 + dy2 * dy2 + z * z);
+    if (r1 > P.rmax || r2 > P.rmax || r1 < P.rmin || r2 < P.rmin) { G.sU[k] = G.sV[k] = G.sUV[k] = NaN; continue; }
+    const se1 = z / (r1 + EPS), ce1 = Math.sqrt(1 - se1 * se1);
+    const se2 = z / (r2 + EPS), ce2 = Math.sqrt(1 - se2 * se2);
+    const a = dx1 / (r1 + EPS) / ce1 * ce1, b = dy1 / (r1 + EPS) / ce1 * ce1;
+    const c = dx2 / (r2 + EPS) / ce2 * ce2, d = dy2 / (r2 + EPS) / ce2 * ce2;
+    const det = a * d - b * c;
+    const ai = d / det, bi = -b / det, ci = -c / det, di = a / det;
+    const v1 = vr + se1 * se1 * vw, v2 = vr + se2 * se2 * vw, cw = se1 * se2 * vw;
+    const sU = Math.sqrt(ai * ai * v1 + bi * bi * v2 + 2 * ai * bi * cw);
+    const sV = Math.sqrt(ci * ci * v1 + di * di * v2 + 2 * ci * di * cw);
+    G.sU[k] = sU; G.sV[k] = sV;
+    G.sUV[k] = ai * ci * v1 + bi * di * v2 + (ai * di + bi * ci) * cw;
+    if (!isNaN(sU)) { aU += sU; nU++; }
+    if (!isNaN(sV)) { aV += sV; nV++; }
+  }
+  out[0] = nU ? aU / nU : NaN;
+  out[1] = nV ? aV / nV : NaN;
+
+  let mWS = 0, nWS = 0, mWD = 0, nWD = 0;
+  const WS = P.ws, WS2 = WS * WS, WS4 = WS2 * WS2;
+  for (const [U, V] of P.winds) {
+    let aS = 0, cS = 0, aD = 0, cD = 0;
+    for (let k = 0; k < nz; k++) {
+      const sU = G.sU[k], sV = G.sV[k], sUV = G.sUV[k];
+      const sWS = Math.sqrt((U / WS * sU) ** 2 + (V / WS * sV) ** 2 + 2 * U * V / WS2 * sUV);
+      const sWD = Math.sqrt((V / WS2 * sU) ** 2 + (U / WS2 * sV) ** 2 - 2 * U * V / WS4 * sUV) * DEG;
+      if (!isNaN(sWS)) { aS += sWS; cS++; }
+      if (!isNaN(sWD)) { aD += sWD; cD++; }
+    }
+    if (cS) { mWS += aS / cS; nWS++; }
+    if (cD) { mWD += aD / cD; nWD++; }
+  }
+  out[2] = nWS ? mWS / nWS : NaN;
+  out[3] = nWD ? mWD / nWD : NaN;
+  return out;
+}
+
+function blocked(R, dx, dy) {
+  if (!R) return false;
+  const a = Math.round(Math.atan2(dx, dy) * DEG);
+  return dx * dx + dy * dy > R[(a + 360) % 360] ** 2;
+}
+
+function inSector([lo, hi], dx, dy) {
+  if (hi - lo >= 360) return true;
+  const a = (Math.atan2(dx, dy) * DEG + 360) % 360, l = (lo % 360 + 360) % 360, h = (hi % 360 + 360) % 360;
+  return l <= h ? a >= l && a <= h : a >= l || a <= h;
+}
+const sector = i => [S['azmin' + (i + 1)], S['azmax' + (i + 1)]];
+const active = () => S.cfg === 'single' ? [0] : [0, 1];
+
+// Single lidar: inside the scan sector, not blocked, and within the horizontal range limits
+function covered(dx, dy, P) {
+  if ((P.blk && blocked(P.blk[0], dx, dy)) || !inSector(P.sec[0], dx, dy)) return false;
+  const r2 = dx * dx + dy * dy;
+  return r2 >= P.rmin * P.rmin && r2 <= P.rmax * P.rmax;
+}
+
+function params() {
+  const dirs = S.wdMode === 'all' ? Array.from({ length: 36 }, (_, i) => i * 10) : [S.wd];
+  const winds = dirs.map(wd => [-S.ws * Math.sin(wd / DEG), -S.ws * Math.cos(wd / DEG)]);
+  return { z: S.z, srws: S.srws, sw: S.sw, rmin: S.rmin, rmax: S.rmax, ws: S.ws, winds, blk: S.blkOn ? S.blk : null, sec: [sector(0), sector(1)] };
+}
+
+// Local metric coordinates: Web Mercator scaled by cos(latitude of the view center)
+const proj = ll => L.CRS.EPSG3857.project(ll);
+function localFrame() {
+  const k = Math.cos(map.getCenter().lat / DEG);
+  const p1 = proj(S.lidars[0]), p2 = proj(S.lidars[1]);
+  return { k, p1, p2 };
+}
+function errorsAt(latlng, F, P, out) {
+  const p = proj(latlng);
+  return cellErrors((p.x - F.p1.x) * F.k, (p.y - F.p1.y) * F.k, (p.x - F.p2.x) * F.k, (p.y - F.p2.y) * F.k, P, out);
+}
+
+const map = L.map('map', { zoomControl: true });
+const BASEMAP_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+L.tileLayer(BASEMAP_URL, {
+  maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics | Terrain: Terrain Tiles (Mapzen/AWS), USGS 3DEP, SRTM',
+}).addTo(map);
+L.control.scale({ imperial: false }).addTo(map);
+
+let overlay = null;
+const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+const CELL = 4, CELL_DRAG = 8;
+
+const MERC_C = 2 * Math.PI * 6378137;
+const surfZoom = () => Math.min(14, Math.max(0, Math.round(map.getZoom())));
+const surfAt = (latlng, tz) => { const p = map.project(latlng, tz); return surfPix(p.x, p.y, tz); };
+
+function requestViewTiles(tz) {
+  const b = map.getBounds(), p0 = map.project(b.getNorthWest(), tz), p1 = map.project(b.getSouthEast(), tz), n = 2 ** tz, jobs = [];
+  for (let x = Math.floor(p0.x / 256); x <= Math.floor(p1.x / 256); x++)
+    for (let y = Math.max(0, Math.floor(p0.y / 256)); y <= Math.min(n - 1, Math.floor(p1.y / 256)); y++) {
+      const j = loadTile(tz, x, y); if (j) jobs.push(j);
+    }
+  if (!jobs.length) return;
+  surfMsg(`Loading ${jobs.length} terrain tile${jobs.length > 1 ? 's' : ''}…`);
+  Promise.all(jobs).then(ok => {
+    const nf = ok.filter(v => !v).length;
+    surfMsg(nf ? `${nf} terrain tile(s) failed to load.` : '');
+    update();
+  });
+}
+
+function renderSurface(d, nx, ny, tl, dxm, dym) {
+  const tz = surfZoom(), sc = 256 * 2 ** tz / MERC_C, h = new Float32Array(nx * ny);
+  requestViewTiles(tz);
+  if (S.zref) {
+    const pz = map.project(S.zref, tz), jz = loadTile(tz, Math.floor(pz.x / 256), Math.floor(pz.y / 256));
+    if (jz) jz.then(() => { surfMsg(''); update(); });
+  }
+  const ref = S.zref ? surfAt(S.zref, tz) : 0;
+  let lo = Infinity, hi = -Infinity;
+  for (let j = 0; j < ny; j++) {
+    const py = (MERC_C / 2 - (tl.y + (j + 0.5) * dym)) * sc;
+    for (let i = 0; i < nx; i++) {
+      const v = surfPix((tl.x + (i + 0.5) * dxm + MERC_C / 2) * sc, py, tz) - ref;
+      h[j * nx + i] = v;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  S.hRange = S.hLim || (isFinite(lo) ? [lo, Math.max(hi, lo + 1)] : null);
+  for (let q = 0; q < h.length; q++) {
+    const o = q * 4;
+    if (isNaN(h[q]) || !S.hRange) { d[o + 3] = 0; continue; }
+    const c = viridis((h[q] - S.hRange[0]) / (S.hRange[1] - S.hRange[0]));
+    d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+  }
+  if (S.zref && isNaN(ref)) surfMsg('Height at the zero point is not available yet (terrain loading or outside data).');
+  refreshHeightLegend();
+}
+
+function refreshHeightLegend() {
+  document.getElementById('hAuto').classList.toggle('on', !S.hLim);
+  ['hmin', 'hmax'].forEach((id, k) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = S.hRange ? +S.hRange[k].toFixed(0) : ''; });
+  document.getElementById('hbar').style.background = `linear-gradient(to right, ${VIRIDIS.map(c => `rgb(${c})`).join(',')})`;
+  document.getElementById('hticks').innerHTML = S.hRange
+    ? Array.from({ length: 5 }, (_, i) => `<span>${(S.hRange[0] + (S.hRange[1] - S.hRange[0]) * i / 4).toFixed(0)}</span>`).join('') + '<span>m</span>' : '';
+}
+function surfMsg(t) { document.getElementById('surfMsg').textContent = t; }
+
+function renderOverlay() {
+  if (!S.lidars[0] || !S.lidars[1]) return;
+  const cell = S.dragging && S.wdMode === 'all' ? CELL_DRAG : CELL;
+  const size = map.getSize(), nx = Math.ceil(size.x / cell), ny = Math.ceil(size.y / cell);
+  const b = map.getPixelBounds(), zoom = map.getZoom();
+  const F = localFrame(), P = params(), vi = VIDX[S.v], vmax = S.vmax[S.v], out = [0, 0, 0, 0], single = S.cfg === 'single';
+  canvas.width = nx; canvas.height = ny;
+  const img = ctx.createImageData(nx, ny), d = img.data;
+  const pixToMerc = (px, py) => proj(map.unproject([px, py], zoom));
+  const tl = pixToMerc(b.min.x, b.min.y), br = pixToMerc(b.min.x + nx * cell, b.min.y + ny * cell);
+  const dxm = (br.x - tl.x) / nx, dym = (br.y - tl.y) / ny;
+  if (S.layer === 'surf') renderSurface(d, nx, ny, tl, dxm, dym);
+  else for (let j = 0; j < ny; j++) {
+    const my = tl.y + (j + 0.5) * dym;
+    const dy1 = (my - F.p1.y) * F.k, dy2 = (my - F.p2.y) * F.k;
+    for (let i = 0; i < nx; i++) {
+      const mx = tl.x + (i + 0.5) * dxm, dx1 = (mx - F.p1.x) * F.k, o = (j * nx + i) * 4;
+      if (single) {
+        if (covered(dx1, dy1, P)) { d[o] = GREEN[0]; d[o + 1] = GREEN[1]; d[o + 2] = GREEN[2]; d[o + 3] = 255; }
+        else d[o + 3] = 0;
+        continue;
+      }
+      cellErrors(dx1, dy1, (mx - F.p2.x) * F.k, dy2, P, out);
+      const v = out[vi];
+      if (isNaN(v)) { d[o + 3] = 0; continue; }
+      const c = levelColor(v, vmax);
+      d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const bounds = L.latLngBounds(map.unproject([b.min.x, b.min.y + ny * cell], zoom), map.unproject([b.min.x + nx * cell, b.min.y], zoom));
+  if (!overlay) overlay = L.imageOverlay(canvas.toDataURL(), bounds, { opacity: S.opacity, interactive: false }).addTo(map);
+  else { overlay.setUrl(canvas.toDataURL()); overlay.setBounds(bounds); overlay.setOpacity(S.opacity); }
+}
+
+let pending = false;
+function update() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; computeHorizons(); renderOverlay(); refreshPanel(); });
+}
+
+// Terrain: AWS Terrain Tiles, Terrarium encoding, elevation = R*256 + G + B/256 - 32768 [m]
+const TERRAIN_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+const tileCache = new Map();
+const NAZ = 360, DS = 10, DS_SURF = 2, R_EFF = 4 / 3 * 6371000;
+const tileZoom = () => S.rmax <= 5000 ? 14 : S.rmax <= 12000 ? 13 : 12;
+const metersPerPixel = (lat, z) => 40075016.686 * Math.cos(lat / DEG) / (256 * 2 ** z);
+
+function loadTile(z, x, y) {
+  const key = `${z}/${x}/${y}`;
+  if (tileCache.has(key)) return null;
+  tileCache.set(key, 'loading');
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      cx.drawImage(img, 0, 0);
+      const d = cx.getImageData(0, 0, 256, 256).data, e = new Float32Array(256 * 256);
+      for (let i = 0; i < e.length; i++) e[i] = d[4 * i] * 256 + d[4 * i + 1] + d[4 * i + 2] / 256 - 32768;
+      tileCache.set(key, e); resolve(true);
+    };
+    img.onerror = () => { tileCache.set(key, 'failed'); resolve(false); };
+    img.src = TERRAIN_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  });
+}
+
+function elevRaw(ix, iy, z) {
+  const t = tileCache.get(`${z}/${ix >> 8}/${iy >> 8}`);
+  return t instanceof Float32Array ? t[(iy & 255) * 256 + (ix & 255)] : NaN;
+}
+function elevPix(px, py, z) {
+  const fx = px - 0.5, fy = py - 0.5, ix = Math.floor(fx), iy = Math.floor(fy), wx = fx - ix, wy = fy - iy;
+  return (elevRaw(ix, iy, z) * (1 - wx) + elevRaw(ix + 1, iy, z) * wx) * (1 - wy)
+       + (elevRaw(ix, iy + 1, z) * (1 - wx) + elevRaw(ix + 1, iy + 1, z) * wx) * wy;
+}
+
+// Surface model from make_dsm.py: highest non-noise USGS 3DEP lidar return per pixel [Khosravipour et al., 2014],
+// Terrarium-encoded on the Web Mercator pixel grid at meta.zoom, alpha = 0 where no returns
+const DSM = { meta: null, e: null };
+async function setDSM(meta, src, label) {
+  const img = new Image(); img.src = src; await img.decode();
+  if (img.naturalWidth !== meta.width || img.naturalHeight !== meta.height)
+    throw new Error(`image is ${img.naturalWidth}x${img.naturalHeight}, metadata says ${meta.width}x${meta.height}`);
+  const c = document.createElement('canvas'); c.width = meta.width; c.height = meta.height;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0);
+  const d = cx.getImageData(0, 0, meta.width, meta.height).data, e = new Float32Array(meta.width * meta.height);
+  for (let i = 0; i < e.length; i++) e[i] = d[4 * i + 3] ? d[4 * i] * 256 + d[4 * i + 1] + d[4 * i + 2] / 256 - 32768 : NaN;
+  Object.assign(DSM, { meta, e });
+  dsmMsg(`Surface model loaded from ${label}: ${(2 * meta.half_width_m / 1000).toFixed(1)} km square around ${meta.center.map(v => v.toFixed(4)).join(', ')}, ${metersPerPixel(meta.center[0], meta.zoom).toFixed(1)} m pixels.`);
+  S.horizonDirty = true; update();
+}
+
+// Project folder via the File System Access API; the handle is kept in IndexedDB so the next session can reconnect
+let projDir = null;
+const FS_OK = 'showDirectoryPicker' in window;
+
+function idb(mode, fn) {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('dual-doppler-planner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onerror = () => rej(r.error);
+    r.onsuccess = () => { const q = fn(r.result.transaction('kv', mode).objectStore('kv')); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); };
+  });
+}
+const dirMsg = t => document.getElementById('dirMsg').textContent = t;
+
+async function useFolder(h) {
+  projDir = h;
+  try { await idb('readwrite', s => s.put(h, 'projDir')); } catch { }
+  let hasData = true;
+  try { await h.getDirectoryHandle('data'); } catch { hasData = false; }
+  dirMsg(`Folder: ${h.name}${hasData ? '' : ' (no data/ subfolder: is this the planner folder?)'}`);
+  document.getElementById('connectDir').classList.remove('on');
+  // a plan opened before connecting may still be waiting for its source files
+  if (!sitesLoaded && S.src.sites) await loadSites(S.src.sites);
+  if (!DSM.e && S.src.dsm) await loadDSMPaths(S.src.dsm);
+  update();
+}
+
+async function connectFolder() {
+  let start;
+  try { start = await idb('readonly', s => s.get('projDir')); } catch { }
+  try { await useFolder(await showDirectoryPicker({ id: 'planner', mode: 'readwrite', ...(start ? { startIn: start } : {}) })); }
+  catch (err) { if (err.name !== 'AbortError') dirMsg(`Could not connect (${err.message})`); }
+}
+
+async function restoreFolder() {
+  if (!FS_OK) { dirMsg('Not supported in this browser: use Chrome or Edge.'); document.getElementById('connectDir').disabled = true; return; }
+  let h;
+  try { h = await idb('readonly', s => s.get('projDir')); } catch { }
+  if (h && await h.queryPermission({ mode: 'readwrite' }) === 'granted') return useFolder(h);
+  dirMsg(h ? `Not connected (last: ${h.name})` : 'Not connected');
+  document.getElementById('connectDir').classList.add('on');
+}
+
+async function readSource(path) {
+  if (projDir) {
+    const parts = path.split('/').filter(Boolean);
+    let d = projDir;
+    for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p);
+    return (await d.getFileHandle(parts[parts.length - 1])).getFile();
+  }
+  if (location.protocol !== 'file:') {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  }
+  throw new Error('project folder not connected');
+}
+
+// File picker starting in the project folder; the path relative to the folder is kept so plans can reload the file (null if outside it)
+async function pickInFolder(types, multiple = false, startIn = projDir) {
+  const hs = await showOpenFilePicker({ types, multiple, startIn });
+  return Promise.all(hs.map(async h => {
+    const p = await projDir.resolve(h);
+    return { file: await h.getFile(), path: p ? p.join('/') : null };
+  }));
+}
+
+async function loadDSMPaths(src) {
+  try {
+    const meta = JSON.parse(await (await readSource(src.json)).text()), url = URL.createObjectURL(await readSource(src.png));
+    try { await setDSM(meta, url, src.png); } finally { URL.revokeObjectURL(url); }
+    S.src.dsm = src;
+    return true;
+  } catch (err) {
+    dsmMsg(`Surface model not loaded (${src.png} + ${src.json}: ${err.message || 'image could not be decoded'}). Connect the project folder or select both files; until then blockage uses bare-earth terrain only.`);
+    return false;
+  }
+}
+
+async function loadDSMFiles(items) {
+  const png = items.find(f => /\.png$/i.test(f.file.name)), js = items.find(f => /\.json$/i.test(f.file.name));
+  if (!png || !js) { dsmMsg('Select both files together: the .png and its .json (made by make_dsm.py).'); return; }
+  const url = URL.createObjectURL(png.file);
+  try {
+    await setDSM(JSON.parse(await js.file.text()), url, png.path || png.file.name);
+    S.src.dsm = png.path && js.path ? { png: png.path, json: js.path } : null;
+    if (!S.src.dsm) dsmMsg(document.getElementById('dsmMsg').textContent + ' Not inside the project folder, so saved plans cannot reload it.');
+  }
+  catch (err) { dsmMsg(`Could not read ${png.file.name} / ${js.file.name} (${err.message || 'image could not be decoded'}).`); }
+  finally { URL.revokeObjectURL(url); }
+}
+function dsmMsg(t) { document.getElementById('dsmMsg').textContent = t; }
+
+// Obstacle height for blockage: surface model where available, bare earth elsewhere
+function surfPix(px, py, z) {
+  if (DSM.e) {
+    const m = DSM.meta, f = 2 ** (m.zoom - z), x = Math.floor(px * f) - m.px0, y = Math.floor(py * f) - m.py0;
+    if (x >= 0 && y >= 0 && x < m.width && y < m.height) {
+      const v = DSM.e[y * m.width + x];
+      if (!isNaN(v)) return v;
+    }
+  }
+  return elevPix(px, py, z);
+}
+
+function requestTiles(i) {
+  const z = tileZoom(), p = map.project(S.lidars[i], z), rp = S.rmax / metersPerPixel(S.lidars[i].lat, z) + 2;
+  const jobs = [];
+  for (let x = Math.floor((p.x - rp) / 256); x <= Math.floor((p.x + rp) / 256); x++)
+    for (let y = Math.floor((p.y - rp) / 256); y <= Math.floor((p.y + rp) / 256); y++) {
+      const j = loadTile(z, x, y); if (j) jobs.push(j);
+    }
+  if (!jobs.length) return;
+  terrainMsg(`Terrain: loading ${jobs.length} tile${jobs.length > 1 ? 's' : ''}…`);
+  Promise.all(jobs).then(ok => {
+    const nf = ok.filter(v => !v).length;
+    terrainMsg(nf ? `Terrain: ${nf} tile(s) failed to load; blockage there is ignored.` : '');
+    S.horizonDirty = true; update();
+  });
+}
+
+function horizon(i) {
+  const L0 = S.lidars[i], z = tileZoom(), p0 = map.project(L0, z), mpp = metersPerPixel(L0.lat, z);
+  const R = new Float32Array(NAZ).fill(S.rmax);
+  const g0 = elevPix(p0.x, p0.y, z);
+  S.ground[i] = g0;
+  if (isNaN(g0)) return R;
+  const zb = g0 + S['h' + (i + 1)], tanE = Math.tan(S['e' + (i + 1)] / DEG);
+  const ds = DSM.e ? DS_SURF : DS;
+  for (let a = 0; a < NAZ; a++) {
+    const sx = Math.sin(a / DEG) / mpp, sy = -Math.cos(a / DEG) / mpp;
+    for (let s = Math.max(ds, Math.ceil(S['dmin' + (i + 1)] / ds) * ds); s <= S.rmax; s += ds) {
+      const g = surfPix(p0.x + sx * s, p0.y + sy * s, z);
+      if (g > zb + s * tanE + s * s / (2 * R_EFF)) { R[a] = s; break; }
+    }
+  }
+  return R;
+}
+
+let lastHorizonKey = '';
+function computeHorizons() {
+  if (!S.lidars[0] || !S.lidars[1]) return;
+  const key = [S.lidars[0].lat, S.lidars[0].lng, S.lidars[1].lat, S.lidars[1].lng, S.h1, S.e1, S.h2, S.e2, S.dmin1, S.dmin2, S.rmax, S.blkOn, S.cfg, sector(0), sector(1)].join();
+  if (key === lastHorizonKey && !S.horizonDirty) return;
+  lastHorizonKey = key; S.horizonDirty = false;
+  active().forEach(i => {
+    requestTiles(i);
+    S.blk[i] = horizon(i);
+    const R = S.blkOn ? S.blk[i] : new Float32Array(NAZ).fill(S.rmax);
+    const z = tileZoom(), p0 = map.project(S.lidars[i], z), mpp = metersPerPixel(S.lidars[i].lat, z);
+    const pt = a => { const r = R[(Math.round(a) % 360 + 360) % 360]; return map.unproject([p0.x + Math.sin(a / DEG) * r / mpp, p0.y - Math.cos(a / DEG) * r / mpp], z); };
+    const [lo, hi] = sector(i);
+    if (hi - lo >= 360) rangePolys[i].setLatLngs(Array.from(R, (r, a) => pt(a)));
+    else {
+      const span = ((hi - lo) % 360 + 360) % 360, azs = Array.from({ length: Math.floor(span) + 1 }, (_, k) => lo + k);
+      if (azs[azs.length - 1] !== lo + span) azs.push(lo + span);
+      rangePolys[i].setLatLngs([S.lidars[i], ...azs.map(pt)]);
+    }
+    document.getElementById('g' + (i + 1)).textContent = isNaN(S.ground[i]) ? '–' : S.ground[i].toFixed(0);
+  });
+}
+function terrainMsg(t) { document.getElementById('terrainMsg').textContent = t; }
+
+const lidarIcon = i => L.divIcon({ className: '', html: `<div class="lidar-icon" style="background:var(--l${i + 1})">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+const lidarMarkers = [null, null], rangePolys = [null, null];
+let baselineLine = null;
+
+function setLidar(i, latlng) {
+  S.lidars[i] = L.latLng(latlng);
+  if (!lidarMarkers[i]) {
+    lidarMarkers[i] = L.marker(S.lidars[i], { icon: lidarIcon(i), draggable: true, zIndexOffset: 1000 }).addTo(map)
+      .on('dragstart', () => { S.dragging = true; })
+      .on('drag', e => { S.lidars[i] = e.target.getLatLng(); update(); })
+      .on('dragend', () => { S.dragging = false; update(); saveHash(); });
+    rangePolys[i] = L.polygon([], { color: i ? '#ff7a1a' : '#2b6cff', weight: 1.5, dashArray: '6 5', fill: false, interactive: false }).addTo(map);
+  } else lidarMarkers[i].setLatLng(S.lidars[i]);
+  update();
+}
+
+function addTarget(latlng, name = null, fixed = name !== null) {
+  const m = L.marker(latlng, { draggable: !fixed, icon: L.divIcon({ className: '', html: `<div class="tgt-icon${fixed ? '' : ' manual'}"></div>`, iconSize: [34, 34], iconAnchor: [17, 17] }) }).addTo(map);
+  m.fixed = fixed;
+  m.name = name || `Target ${S.targets.filter(t => !t.fixed).length + 1}`;
+  m.bindTooltip(m.name, { direction: 'top', offset: [0, -16] });
+  if (!fixed) m.on('drag', update).on('dragend', saveHash)
+    .on('contextmenu', () => { map.removeLayer(m); S.targets = S.targets.filter(t => t !== m); update(); saveHash(); });
+  S.targets.push(m);
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const starPath = () => Array.from({ length: 10 }, (_, k) => {
+  const r = k % 2 ? 4 : 9.5, a = k * Math.PI / 5;
+  return `${k ? 'L' : 'M'}${(r * Math.sin(a)).toFixed(2)},${(-r * Math.cos(a)).toFixed(2)}`;
+}).join('') + 'Z';
+// SVG path data centered on 0,0; also drawn on the export canvas via Path2D
+const MARKERS = {
+  triangle: { label: '▲ Triangle', d: 'M0,-9L8.5,6.5H-8.5Z' },
+  square: { label: '■ Square', d: 'M-7,-7H7V7H-7Z' },
+  diamond: { label: '◆ Diamond', d: 'M0,-9.5L9,0L0,9.5L-9,0Z' },
+  circle: { label: '● Circle', d: 'M8,0A8,8 0 1 1 -8,0A8,8 0 1 1 8,0Z' },
+  star: { label: '★ Star', d: starPath() },
+  cross: { label: '✚ Cross', d: 'M-3,-9H3V-3H9V3H3V9H-3V3H-9V-3H-3Z' },
+};
+const DEFAULT_INS_COLOR = '#ffd60a';
+const validColor = c => /^#[0-9a-f]{6}$/i.test(c) ? c : DEFAULT_INS_COLOR;
+const markerSvg = (k, color, s = 22) => `<svg width="${s}" height="${s}" viewBox="-11 -11 22 22" style="display:block;overflow:visible"><path d="${MARKERS[k].d}" fill="${color}" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+
+function addInstrument(latlng, name, shape, color) {
+  if (!(shape in MARKERS)) shape = 'triangle';
+  color = validColor(color);
+  const m = L.marker(latlng, { draggable: true, zIndexOffset: 500, icon: L.divIcon({ className: '', html: markerSvg(shape, color), iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(map);
+  m.name = name || `Instrument ${S.instruments.length + 1}`;
+  m.shape = shape;
+  m.color = color;
+  m.bindTooltip(esc(m.name), { permanent: true, direction: 'right', offset: [10, 0], className: 'ins-label' });
+  m.on('dragend', () => { refreshInstruments(); saveHash(); }).on('contextmenu', () => removeInstrument(m));
+  S.instruments.push(m);
+}
+
+const CM_PATH = 'M-9,-8H9V4H-2L-6,9V4H-9Z';
+const CM_ICON = L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11],
+  html: `<svg width="22" height="22" viewBox="-11 -11 22 22" style="display:block;overflow:visible"><path d="${CM_PATH}" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>` });
+
+function addComment(latlng, text = '') {
+  const m = L.marker(latlng, { draggable: true, zIndexOffset: 600, icon: CM_ICON }).addTo(map);
+  m.text = text;
+  const box = L.DomUtil.create('div', 'cm-pop');
+  box.innerHTML = '<textarea rows="4" placeholder="Comment"></textarea><div class="row"><button>Delete</button></div>';
+  const ta = box.querySelector('textarea');
+  ta.value = text;
+  ta.addEventListener('input', () => { m.text = ta.value; });
+  box.querySelector('button').onclick = () => removeComment(m);
+  m.bindPopup(box, { minWidth: 320, maxWidth: 420 });
+  m.bindTooltip(() => esc(m.text.trim() || '(empty)'), { direction: 'top', offset: [0, -10], className: 'cm-tip' });
+  m.on('popupopen', () => { m.closeTooltip(); setTimeout(() => ta.focus(), 0); })
+   .on('popupclose', () => { if (!m.text.trim()) removeComment(m); else saveHash(); })
+   .on('dragend', saveHash).on('contextmenu', () => removeComment(m));
+  S.comments.push(m);
+  return m;
+}
+
+function removeComment(m) {
+  if (!S.comments.includes(m)) return;
+  S.comments = S.comments.filter(t => t !== m);
+  map.removeLayer(m);
+  saveHash();
+}
+
+// Splits text into lines no wider than maxW on the canvas, keeping the user's line breaks
+function wrapText(g, text, maxW) {
+  return text.split('\n').flatMap(par => par.split(' ').reduce((lines, w) => {
+    const last = lines[lines.length - 1], t = last ? last + ' ' + w : w;
+    if (last && g.measureText(t).width > maxW) lines.push(w); else lines[lines.length - 1] = t;
+    return lines;
+  }, ['']));
+}
+
+function removeInstrument(m) {
+  map.removeLayer(m);
+  S.instruments = S.instruments.filter(t => t !== m);
+  refreshInstruments(); saveHash();
+}
+
+function refreshInstruments() {
+  const tbl = document.getElementById('insTbl');
+  tbl.innerHTML = !S.instruments.length ? '' : '<tr><th></th><th style="text-align:left">Name</th><th>Lat, lon</th><th></th></tr>' + S.instruments.map((m, k) => {
+    const p = m.getLatLng();
+    return `<tr><td>${markerSvg(m.shape, m.color, 14)}</td><td style="text-align:left">${esc(m.name)}</td><td style="white-space:nowrap">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</td><td><button data-rm="${k}" title="Remove">✕</button></td></tr>`;
+  }).join('');
+  tbl.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeInstrument(S.instruments[+b.dataset.rm]));
+}
+
+function textColor(c) {
+  return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] > 140 ? '#000' : '#fff';
+}
+const fmtShort = v => isNaN(v) ? '–' : !isFinite(v) ? '∞' : v < 10 ? v.toFixed(2) : v.toFixed(0);
+
+const UNITS = { U: 'm/s', V: 'm/s', WS: 'm/s', WD: '°' };
+const hist = L.control({ position: 'topright' });
+hist.onAdd = () => { const d = L.DomUtil.create('div', 'hist'); L.DomEvent.disableClickPropagation(d); return d; };
+hist.addTo(map);
+const beamHist = L.control({ position: 'topright' });
+beamHist.onAdd = () => { const d = L.DomUtil.create('div', 'hist'); L.DomEvent.disableClickPropagation(d); return d; };
+beamHist.addTo(map);
+
+// Beam height above local ground at a point, same beam model as horizon() [Doviak and Zrnić, 1993]
+function beamHeight(i, latlng) {
+  const z = tileZoom(), p0 = map.project(S.lidars[i], z), pt = map.project(latlng, z), mpp = metersPerPixel(S.lidars[i].lat, z);
+  const dx = (pt.x - p0.x) * mpp, dy = (p0.y - pt.y) * mpp, s = Math.hypot(dx, dy);
+  const h = S.ground[i] + S['h' + (i + 1)] + s * Math.tan(S['e' + (i + 1)] / DEG) + s * s / (2 * R_EFF) - elevPix(pt.x, pt.y, z);
+  const blk = s > S.rmax || s < S.rmin || (S.blkOn && blocked(S.blk[i], dx, dy)) || !inSector(sector(i), dx, dy);
+  return { h, blk };
+}
+
+function drawBeamHist(rows) {
+  const el = beamHist.getContainer();
+  if (!rows.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const W = 250, H = 160, x0 = 34, x1 = W - 6, y0 = 26, y1 = H - 24;
+  const vals = rows.flat().map(r => r.h).filter(isFinite);
+  if (!vals.length) { el.innerHTML = '<div style="font-weight:600">Beam height at targets</div><div class="note">Terrain not loaded yet.</div>'; return; }
+  const step = 10 ** Math.floor(Math.log10(Math.max(...vals.map(Math.abs), 1)));
+  const lo = Math.min(0, Math.floor(Math.min(...vals) / step) * step), hi = Math.max(step, Math.ceil(Math.max(...vals) / step) * step);
+  const ys = v => y1 - (v - lo) / (hi - lo) * (y1 - y0), gw = (x1 - x0) / rows.length, bw = Math.min(gw * 0.38, 14);
+  let svg = `<text x="0" y="12" style="font-weight:600">Beam height above ground at targets</text>`;
+  [lo, (lo + hi) / 2, hi].forEach(t => svg += `<line x1="${x0}" x2="${x1}" y1="${ys(t)}" y2="${ys(t)}" stroke="currentColor" stroke-opacity=".15"/>
+    <text x="${x0 - 4}" y="${ys(t) + 4}" text-anchor="end" opacity=".7">${+t.toFixed(0)}</text>`);
+  svg += `<line x1="${x0}" x2="${x1}" y1="${ys(0)}" y2="${ys(0)}" stroke="currentColor" stroke-opacity=".5"/>`;
+  rows.forEach((pair, n) => {
+    const cx = x0 + (n + 0.5) * gw;
+    pair.forEach((r, i) => {
+      if (!isFinite(r.h)) return;
+      const x = pair.length === 1 ? cx - bw / 2 : cx + (i ? 1 : -bw - 1), ya = ys(Math.max(r.h, 0)), yb = ys(Math.min(r.h, 0));
+      svg += `<rect x="${x}" y="${ya}" width="${bw}" height="${Math.max(yb - ya, 0.5)}" fill="${i ? '#ff7a1a' : '#2b6cff'}" fill-opacity="${r.blk ? 0.25 : 1}" rx="1.5">
+        <title>${S.targets[n].name}, lidar ${i + 1}: ${r.h.toFixed(1)} m${r.blk ? ' (not visible)' : ''}</title></rect>`;
+    });
+    svg += `<text x="${cx}" y="${y1 + 13}" text-anchor="middle" font-size="10">${n + 1}</text>`;
+  });
+  svg += `<text transform="translate(9 ${(y0 + y1) / 2}) rotate(-90)" text-anchor="middle" opacity=".7" font-size="10">height AGL [m]</text>
+    <text x="0" y="${H - 1}" font-size="10"><tspan opacity=".7">target #</tspan><tspan dx="8" fill="#2b6cff">■</tspan> lidar 1${S.cfg === 'single' ? '' : '<tspan dx="8" fill="#ff7a1a">■</tspan> lidar 2'}<tspan dx="8" opacity=".7">faded = blocked</tspan></text>`;
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>`;
+}
+
+function drawHist(means, n, nIn = n) {
+  const el = hist.getContainer();
+  if (!n) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  const W = 250, H = 160, x0 = 34, x1 = W - 6, y0 = 26, y1 = H - 24;
+  const keys = Object.keys(VIDX), frac = keys.map((k, q) => means[q] / S.vmax[k]);
+  const top = Math.max(1, Math.ceil(Math.max(...frac.filter(isFinite), 0) * 5) / 5);
+  const ys = f => y1 - Math.min(f, top) / top * (y1 - y0), bw = (x1 - x0) / keys.length;
+  let svg = `<text x="0" y="12" style="font-weight:600">Mean error at ${nIn < n ? nIn + ' of ' : ''}${n} target${n > 1 ? 's' : ''}</text>`;
+  svg += `<text x="${W}" y="12" text-anchor="end" opacity=".7">${S.wdMode === 'all' ? 'all WD' : 'WD ' + S.wd + '°'}</text>`;
+  [0, top / 2, top].forEach(t => svg += `<line x1="${x0}" x2="${x1}" y1="${ys(t)}" y2="${ys(t)}" stroke="currentColor" stroke-opacity="${t ? .15 : .5}"/>
+    <text x="${x0 - 4}" y="${ys(t) + 4}" text-anchor="end" opacity=".7">${+t.toFixed(2)}</text>`);
+  svg += `<line x1="${x0}" x2="${x1}" y1="${ys(1)}" y2="${ys(1)}" stroke="currentColor" stroke-dasharray="3 3" stroke-opacity=".6"/>`;
+  keys.forEach((k, q) => {
+    const f = frac[q], cx = x0 + (q + 0.5) * bw, c = isNaN(f) ? [128, 128, 128] : levelColor(means[q], S.vmax[k]);
+    const y = isNaN(f) ? y1 : ys(f);
+    svg += `<rect x="${cx - bw * 0.3}" y="${y}" width="${bw * 0.6}" height="${y1 - y}" fill="rgb(${c})" rx="2"
+      ${k === S.v ? 'stroke="currentColor" stroke-width="2"' : ''}/>
+      <text x="${cx}" y="${y - 4}" text-anchor="middle">${fmtShort(means[q])} ${UNITS[k]}</text>
+      <text x="${cx}" y="${y1 + 15}" text-anchor="middle" style="font-weight:${k === S.v ? 700 : 400}">σ<tspan dy="3" font-size="9">${k}</tspan></text>`;
+  });
+  svg += `<text transform="translate(9 ${(y0 + y1) / 2}) rotate(-90)" text-anchor="middle" opacity=".7" font-size="10">÷ color-scale max</text>`;
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${svg}</svg>`;
+}
+
+const loadImg = (src, cors = true) => new Promise((res, rej) => {
+  const im = new Image(); if (cors) im.crossOrigin = 'anonymous';
+  im.onload = () => res(im); im.onerror = rej; im.src = src;
+});
+
+// Redraws the current view (imagery, error overlay, coverage, lidars, targets, charts) on a canvas at 2x, with a colorbar strip
+async function renderFigure() {
+  const SC = 2, size = map.getSize(), W = size.x, H = size.y, CB = 80, FG = '#1d2330';
+  const c = document.createElement('canvas'); c.width = W * SC; c.height = (H + CB) * SC;
+  const g = c.getContext('2d'); g.scale(SC, SC);
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H + CB);
+  g.save(); g.beginPath(); g.rect(0, 0, W, H); g.clip();
+
+  const z = map.getZoom(), b = map.getPixelBounds(), n = 2 ** z, jobs = [];
+  for (let tx = Math.floor(b.min.x / 256); tx <= Math.floor(b.max.x / 256); tx++)
+    for (let ty = Math.max(0, Math.floor(b.min.y / 256)); ty <= Math.min(n - 1, Math.floor(b.max.y / 256)); ty++) {
+      const url = BASEMAP_URL.replace('{z}', z).replace('{y}', ty).replace('{x}', ((tx % n) + n) % n);
+      jobs.push(loadImg(url).then(im => g.drawImage(im, tx * 256 - b.min.x, ty * 256 - b.min.y, 256, 256)));
+    }
+  const imageryOk = (await Promise.allSettled(jobs)).every(r => r.status === 'fulfilled');
+
+  if (overlay) {
+    const ob = overlay.getBounds(), p0 = map.latLngToContainerPoint(ob.getNorthWest()), p1 = map.latLngToContainerPoint(ob.getSouthEast());
+    g.globalAlpha = S.opacity; g.imageSmoothingEnabled = false;
+    g.drawImage(canvas, p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    g.globalAlpha = 1; g.imageSmoothingEnabled = true;
+  }
+  const stroke = (lls, color, w, dash, close) => {
+    g.beginPath();
+    lls.forEach((ll, k) => { const p = map.latLngToContainerPoint(ll); k ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); });
+    if (close) g.closePath();
+    g.strokeStyle = color; g.lineWidth = w; g.setLineDash(dash); g.stroke(); g.setLineDash([]);
+  };
+  rangePolys.forEach((poly, i) => poly && active().includes(i) && stroke(poly.getLatLngs()[0], i ? '#ff7a1a' : '#2b6cff', 1.5, [6, 5], true));
+  if (baselineLine && S.cfg === 'dual') stroke(baselineLine.getLatLngs(), '#fff', 1.5, [4, 4], false);
+
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  S.targets.forEach(m => {
+    const p = map.latLngToContainerPoint(m.getLatLng()), icon = m.getElement().firstChild;
+    g.beginPath(); g.arc(p.x, p.y, 17, 0, 2 * Math.PI);
+    g.fillStyle = icon.style.background || '#888'; g.fill();
+    g.strokeStyle = '#000'; g.lineWidth = 1.5; g.setLineDash(m.fixed ? [] : [3, 2]); g.stroke(); g.setLineDash([]);
+    g.fillStyle = icon.style.color || '#000'; g.font = '700 10px system-ui, sans-serif';
+    g.fillText(icon.textContent, p.x, p.y);
+  });
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '600 11px system-ui, sans-serif';
+  S.instruments.forEach(m => {
+    const p = map.latLngToContainerPoint(m.getLatLng()), path = new Path2D(MARKERS[m.shape].d);
+    g.save(); g.translate(p.x, p.y);
+    g.fillStyle = m.color; g.fill(path);
+    g.strokeStyle = '#000'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke(path);
+    g.restore();
+    const tw = g.measureText(m.name).width;
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.roundRect(p.x + 14, p.y - 9, tw + 10, 18, 3); g.fill();
+    g.fillStyle = FG; g.fillText(m.name, p.x + 19, p.y + 0.5);
+  });
+  g.font = '11px system-ui, sans-serif'; g.textBaseline = 'top';
+  S.comments.forEach(m => {
+    const p = map.latLngToContainerPoint(m.getLatLng()), path = new Path2D(CM_PATH);
+    g.save(); g.translate(p.x, p.y);
+    g.fillStyle = '#fff'; g.fill(path); g.strokeStyle = '#000'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke(path);
+    g.restore();
+    const lines = wrapText(g, m.text.trim(), 200), w = Math.max(...lines.map(l => g.measureText(l).width)) + 12, ht = lines.length * 14 + 8;
+    g.fillStyle = 'rgba(255,255,255,.92)'; g.strokeStyle = '#000'; g.lineWidth = 1;
+    g.beginPath(); g.roundRect(p.x + 14, p.y - 9, w, ht, 4); g.fill(); g.stroke();
+    g.fillStyle = FG; lines.forEach((l, k) => g.fillText(l, p.x + 20, p.y - 4 + k * 14));
+  });
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  S.lidars.forEach((ll, i) => {
+    if (!ll || !active().includes(i)) return;
+    const p = map.latLngToContainerPoint(ll);
+    g.beginPath(); g.arc(p.x, p.y, 11, 0, 2 * Math.PI);
+    g.fillStyle = i ? '#ff7a1a' : '#2b6cff'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    g.fillStyle = '#fff'; g.font = '700 12px system-ui, sans-serif'; g.fillText(i + 1, p.x, p.y + 0.5);
+  });
+
+  const mapRect = map.getContainer().getBoundingClientRect();
+  for (const ctl of [hist, beamHist]) {
+    const el = ctl.getContainer(), svg = el.querySelector('svg');
+    if (el.style.display === 'none' || !svg) continue;
+    const r = el.getBoundingClientRect(), rs = svg.getBoundingClientRect();
+    g.fillStyle = '#fff'; g.beginPath(); g.roundRect(r.left - mapRect.left, r.top - mapRect.top, r.width, r.height, 6); g.fill();
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('style', `color:${FG}`);
+    clone.insertAdjacentHTML('afterbegin', '<style>text{fill:currentColor;font:11px system-ui,sans-serif}</style>');
+    const im = await loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(clone)), false);
+    g.drawImage(im, rs.left - mapRect.left, rs.top - mapRect.top, rs.width, rs.height);
+  }
+
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = '11px system-ui, sans-serif';
+  const sl = document.querySelector('.leaflet-control-scale-line');
+  if (sl) {
+    const sw = sl.offsetWidth, x = 10, y = H - 12;
+    g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(x - 4, y - 16, Math.max(sw, g.measureText(sl.textContent).width) + 8, 22);
+    g.strokeStyle = FG; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x, y); g.lineTo(x + sw, y); g.lineTo(x + sw, y - 4); g.stroke();
+    g.fillStyle = FG; g.fillText(sl.textContent, x + 2, y - 4);
+  }
+  const attr = imageryOk ? 'Imagery © Esri, Maxar, Earthstar Geographics' : 'Imagery not included';
+  g.font = '10px system-ui, sans-serif'; g.textAlign = 'right';
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.fillRect(W - g.measureText(attr).width - 10, H - 16, g.measureText(attr).width + 10, 16);
+  g.fillStyle = FG; g.fillText(attr, W - 5, H - 4);
+  g.restore();
+
+  const vmax = S.vmax[S.v], x0 = 16, y0 = H + 14, bw = Math.min(360, W - 2 * x0), bh = 12;
+  g.fillStyle = FG; g.textAlign = 'left'; g.font = '600 12px system-ui, sans-serif';
+  const secTxt = i => { const [lo, hi] = sector(i); return hi - lo >= 360 ? 'full' : `${lo}–${hi}°`; };
+  if (S.layer === 'surf') {
+    g.fillText('Surface height [m]', x0, y0 + 10);
+    const cx0 = x0 + 120, hb = Math.min(bw, W - cx0 - 16);
+    VIRIDIS.forEach((col, i, A) => { if (i < A.length - 1) {
+      const gr = g.createLinearGradient(cx0 + i * hb / (A.length - 1), 0, cx0 + (i + 1) * hb / (A.length - 1), 0);
+      gr.addColorStop(0, `rgb(${col})`); gr.addColorStop(1, `rgb(${A[i + 1]})`);
+      g.fillStyle = gr; g.fillRect(cx0 + i * hb / (A.length - 1), y0, hb / (A.length - 1) + 0.5, bh);
+    } });
+    g.fillStyle = FG; g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+    if (S.hRange) for (let i = 0; i <= 4; i++) g.fillText((S.hRange[0] + (S.hRange[1] - S.hRange[0]) * i / 4).toFixed(0), cx0 + hb * i / 4, y0 + bh + 13);
+    g.textAlign = 'left'; g.fillStyle = '#5f6878'; g.font = '10px system-ui, sans-serif';
+    g.fillText([`zero ${S.zref ? `at ${S.zref.lat.toFixed(5)}, ${S.zref.lng.toFixed(5)}` : 'sea level'}`,
+      DSM.e ? 'surface model + bare-earth terrain' : 'bare-earth terrain'].join('  ·  '), x0, H + CB - 8);
+  } else if (S.cfg === 'single') {
+    g.globalAlpha = S.opacity; g.fillStyle = `rgb(${GREEN})`; g.fillRect(x0, y0, 24, bh); g.globalAlpha = 1;
+    g.fillStyle = FG; g.fillText('Within scan range of lidar 1', x0 + 32, y0 + 10);
+    g.fillStyle = '#5f6878'; g.font = '10px system-ui, sans-serif';
+    g.fillText([`range ${S.rmin}–${S.rmax} m`, `sector ${secTxt(0)}`,
+      `blockage ${S.blkOn ? (DSM.e ? 'on (surface model)' : 'on (bare earth)') : 'off'}`].join('  ·  '), x0, H + CB - 8);
+  } else {
+  g.fillText('σ', x0, y0 + 8); g.font = '600 9px system-ui, sans-serif'; g.fillText(S.v, x0 + 8, y0 + 11);
+  g.font = '600 12px system-ui, sans-serif'; g.fillText(`[${UNITS[S.v]}]`, x0 + 10 + g.measureText(S.v).width, y0 + 8);
+  const cx0 = x0 + 64;
+  LEVCOL.forEach((col, i) => { g.fillStyle = `rgb(${col})`; g.fillRect(cx0 + i * bw / NLEV, y0, bw / NLEV + 0.5, bh); });
+  g.fillStyle = FG; g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) g.fillText(+(vmax * i / 5).toPrecision(3), cx0 + bw * i / 5, y0 + bh + 13);
+  g.textAlign = 'left'; g.fillStyle = '#5f6878'; g.font = '10px system-ui, sans-serif';
+  const info = [`WD ${S.wdMode === 'all' ? 'all (mean)' : S.wd + '°'}`, `WS ${S.ws} m/s`, `z = ${S.z.join(', ')} m`, `σrws ${S.srws} m/s`, `σw ${S.sw} m/s`,
+    `range ${S.rmin}–${S.rmax} m`, `sectors ${secTxt(0)}, ${secTxt(1)}`, `blockage ${S.blkOn ? (DSM.e ? 'on (surface model)' : 'on (bare earth)') : 'off'}`];
+  g.fillText(info.join('  ·  '), x0, H + CB - 8);
+  }
+  g.textAlign = 'left'; g.fillStyle = FG; g.font = '10px system-ui, sans-serif';
+  g.fillText(active().map(i => `Lidar ${i + 1}: ${S.lidars[i].lat.toFixed(5)}, ${S.lidars[i].lng.toFixed(5)}, ${S['h' + (i + 1)]} m AGL`).join('    '), x0, H + CB - 22);
+  if (planName()) { g.textAlign = 'right'; g.font = '600 13px system-ui, sans-serif'; g.fillText(planName(), W - 16, y0 + 10); }
+
+  const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+  if (!blob) throw new Error('image could not be encoded');
+  return { blob, imageryOk };
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const imageryNote = ok => ok ? '' : ' without imagery (tile server blocked reading it)';
+
+
+const PLAN_FORMAT = 'dual-doppler-plan';
+const NUM_KEYS = ['ws', 'wd', 'srws', 'sw', 'rmin', 'rmax', 'h1', 'e1', 'h2', 'e2', 'dmin1', 'dmin2', 'azmin1', 'azmax1', 'azmin2', 'azmax2'];
+const planName = () => document.getElementById('planName').value.trim();
+
+function planData() {
+  const ll = p => [+p.lat.toFixed(6), +p.lng.toFixed(6)];
+  const pt = m => { const [lat, lon] = ll(m.getLatLng()); return { lat, lon }; };
+  return {
+    format: PLAN_FORMAT, version: 1, name: planName(), saved: new Date().toISOString(),
+    view: { center: ll(map.getCenter()), zoom: map.getZoom() },
+    lidars: S.lidars.map(p => p && ll(p)),
+    settings: {
+      cfg: S.cfg, v: S.v, wdMode: S.wdMode, layer: S.layer, blkOn: S.blkOn, z: S.z, hLim: S.hLim,
+      zref: S.zref && ll(S.zref), vmax: S.vmax, opacity: S.opacity, ...Object.fromEntries(NUM_KEYS.map(k => [k, S[k]])),
+    },
+    targets: S.targets.map(m => ({ name: m.name, ...pt(m), fromSitesFile: m.fixed })),
+    instruments: S.instruments.map(m => ({ name: m.name, marker: m.shape, color: m.color, ...pt(m) })),
+    comments: S.comments.map(m => ({ text: m.text, ...pt(m) })),
+    sources: { sites: S.src.sites, dsm: S.src.dsm },
+  };
+}
+
+async function writeFile(dir, name, blob) {
+  const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+  await w.write(blob); await w.close();
+}
+
+async function savePlan() {
+  const msg = document.getElementById('planMsg'), base = (planName() || 'plan').replace(/[\\/:*?"<>|]+/g, '_');
+  if (FS_OK && !projDir) await connectFolder();
+  if (FS_OK && !projDir) { msg.textContent = 'Not saved: connect the project folder first.'; return; }
+  const dir = projDir && await projDir.getDirectoryHandle('plans', { create: true });
+  if (dir) {
+    let exists = true;
+    try { await dir.getFileHandle(base + '.json'); } catch { exists = false; }
+    if (exists && !confirm(`plans/${base}.json already exists. Overwrite it and plans/${base}.png?`)) { msg.textContent = 'Not saved.'; return; }
+  }
+  msg.textContent = 'Rendering…';
+  const json = new Blob([JSON.stringify(planData(), null, 1)], { type: 'application/json' });
+  const { blob, imageryOk } = await renderFigure();
+  if (dir) {
+    await writeFile(dir, base + '.json', json);
+    await writeFile(dir, base + '.png', blob);
+    msg.textContent = `Saved plans/${base}.json and plans/${base}.png` + imageryNote(imageryOk);
+  } else {
+    download(json, base + '.json'); download(blob, base + '.png');
+    msg.textContent = `Downloaded ${base}.json and ${base}.png (this browser cannot write to folders)` + imageryNote(imageryOk);
+  }
+}
+
+async function openPlan() {
+  if (!projDir) { document.getElementById('planFile').click(); return; }
+  const plans = await projDir.getDirectoryHandle('plans', { create: true });
+  const [it] = await pickInFolder([{ description: 'Plan', accept: { 'application/json': ['.json'] } }], false, plans);
+  await openPlanFile(it.file);
+}
+
+async function openPlanFile(f) {
+  const msg = document.getElementById('planMsg'), p = JSON.parse(await f.text());
+  applyPlan(p);
+  const src = p.sources || {}, missing = [];
+  S.src = { sites: src.sites || null, dsm: src.dsm || null };
+  if (src.sites && (await loadSites(src.sites)) === null) missing.push(src.sites);
+  if (src.dsm && !(await loadDSMPaths(src.dsm))) missing.push(src.dsm.png);
+  update();
+  msg.textContent = `Opened ${f.name}.` + (!missing.length ? '' : ` Could not reload ${missing.join(', ')}${projDir ? '' : ' (project folder not connected)'}; the targets saved in the plan are used.`);
+}
+
+function applyPlan(p) {
+  if (!p || p.format !== PLAN_FORMAT) throw new Error('not a plan file saved by this planner');
+  const s = p.settings || {};
+  NUM_KEYS.forEach(k => { if (isFinite(s[k]) && s[k] !== null) S[k] = +s[k]; });
+  if (s.cfg === 'single' || s.cfg === 'dual') S.cfg = s.cfg;
+  if (s.v in VIDX) S.v = s.v;
+  if (s.wdMode === 'single' || s.wdMode === 'all') S.wdMode = s.wdMode;
+  if (s.layer === 'main' || s.layer === 'surf') S.layer = s.layer;
+  if (typeof s.blkOn === 'boolean') S.blkOn = s.blkOn;
+  if (Array.isArray(s.z)) { const z = s.z.map(Number).filter(v => !isNaN(v) && v >= 0); if (z.length) S.z = z; }
+  S.hLim = Array.isArray(s.hLim) && s.hLim[0] < s.hLim[1] ? s.hLim.map(Number) : null;
+  S.zref = Array.isArray(s.zref) ? L.latLng(s.zref) : null;
+  if (s.vmax) Object.keys(VIDX).forEach(k => { if (s.vmax[k] > 0) S.vmax[k] = +s.vmax[k]; });
+  if (s.opacity >= 0 && s.opacity <= 1) S.opacity = +s.opacity;
+
+  S.targets.forEach(m => map.removeLayer(m)); S.targets = [];
+  (p.targets || []).forEach(t => addTarget([t.lat, t.lon], t.name || null, !!t.fromSitesFile));
+  S.instruments.forEach(m => map.removeLayer(m)); S.instruments = [];
+  const old = S.comments; S.comments = []; old.forEach(m => map.removeLayer(m));
+  (p.comments || []).forEach(t => t.text && addComment([t.lat, t.lon], String(t.text)));
+  (p.instruments || []).forEach(t => addInstrument([t.lat, t.lon], t.name, t.marker, t.color));
+  if (p.view) map.setView(p.view.center, p.view.zoom);
+  (p.lidars || []).forEach((ll, i) => ll && i < 2 && setLidar(i, ll));
+  document.getElementById('planName').value = p.name || '';
+  syncInputs();
+}
+
+function syncInputs() {
+  NUM_KEYS.forEach(k => document.getElementById(k).value = S[k]);
+  document.getElementById('blkOn').checked = S.blkOn;
+  document.getElementById('zs').value = S.z.join(', ');
+  document.getElementById('opacity').value = S.opacity;
+  if (overlay) overlay.setOpacity(S.opacity);
+  refreshLegend(); applyCfg(); applyLayer(); refreshHeightLegend(); refreshInstruments();
+  S.horizonDirty = true; update(); saveHash();
+}
+
+function sitesMsg(t) { document.getElementById('sitesMsg').textContent = t; }
+
+function addSites(buf, label) {
+  S.targets.filter(m => m.fixed).forEach(m => map.removeLayer(m));
+  S.targets = S.targets.filter(m => !m.fixed);
+  const wb = XLSX.read(buf, { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+  const sites = rows.filter(r => !('Type' in r) || String(r.Type).trim().toLowerCase() === 'target')
+    .filter(r => isFinite(+r.Latitude) && isFinite(+r.Longitude));
+  sites.forEach(r => addTarget([+r.Latitude, +r.Longitude], String(r.Name)));
+  sitesMsg(`Loaded ${sites.length} target site${sites.length === 1 ? '' : 's'} from ${label}.`);
+  sitesLoaded = true;
+  return sites.length;
+}
+let sitesLoaded = false;
+
+async function loadSites(path) {
+  try {
+    const n = addSites(await (await readSource(path)).arrayBuffer(), path);
+    S.src.sites = path;
+    return n;
+  } catch (err) {
+    sitesMsg(`Could not load ${path} (${err.message}). Connect the project folder or select it under "Sites file".`);
+    return null;
+  }
+}
+
+async function sitesPicked({ file, path }) {
+  try {
+    if (addSites(await file.arrayBuffer(), path || file.name)) map.fitBounds(L.latLngBounds([...S.targets.map(m => m.getLatLng()), ...S.lidars]), { padding: [40, 40] });
+    S.src.sites = path;
+    if (!path) sitesMsg(document.getElementById('sitesMsg').textContent + ' Its location in the project folder is unknown, so saved plans cannot reload it.');
+  } catch (err) { sitesMsg(`Could not read ${file.name} (${err.message}).`); }
+  update();
+}
+
+const fmt = v => isNaN(v) ? '–' : !isFinite(v) ? '∞' : v.toFixed(v < 10 ? 3 : 1);
+
+function refreshPanel() {
+  const L1 = S.lidars[0], L2 = S.lidars[1];
+  ['l1', 'l2'].forEach((id, i) => {
+    if (!S.lidars[i]) return;
+    const la = document.getElementById(id + 'lat'), lo = document.getElementById(id + 'lon');
+    if (document.activeElement !== la) la.value = S.lidars[i].lat.toFixed(5);
+    if (document.activeElement !== lo) lo.value = S.lidars[i].lng.toFixed(5);
+  });
+  if (L1 && L2 && S.cfg === 'dual') {
+    const p1 = proj(L1), p2 = proj(L2), k = Math.cos(map.getCenter().lat / DEG);
+    const az = (Math.atan2(p2.x - p1.x, p2.y - p1.y) * DEG + 360) % 360;
+    document.getElementById('baseline').textContent = `Baseline ${L1.distanceTo(L2).toFixed(0)} m, bearing 1→2 ${az.toFixed(0)}°`;
+    if (!baselineLine) baselineLine = L.polyline([L1, L2], { color: '#fff', weight: 1.5, dashArray: '4 4', interactive: false }).addTo(map);
+    else baselineLine.setLatLngs([L1, L2]);
+  }
+
+  const tbl = document.getElementById('tgtTbl');
+  if (!S.targets.length || !L1 || !L2) { tbl.innerHTML = ''; drawHist([], 0); drawBeamHist([]); return; }
+  const F = localFrame(), P = params(), acc = [[], [], [], []];
+  if (S.cfg === 'single') {
+    let html = '<tr><th>#</th><th>Name</th><th>In scan range</th></tr>';
+    S.targets.forEach((m, n) => {
+      const p = proj(m.getLatLng()), ok = covered((p.x - F.p1.x) * F.k, (p.y - F.p1.y) * F.k, P), icon = m.getElement().firstChild;
+      icon.style.background = `rgb(${ok ? GREEN : [128, 128, 128]})`;
+      icon.style.color = '#fff';
+      icon.textContent = ok ? '✓' : '✗';
+      html += `<tr><td>${n + 1}</td><td>${m.name}</td><td>${ok ? 'yes' : 'no'}</td></tr>`;
+    });
+    tbl.innerHTML = html;
+    drawHist([], 0);
+    drawBeamHist(S.targets.map(m => [beamHeight(0, m.getLatLng())]));
+    return;
+  }
+  let html = '<tr><th>#</th><th>Name</th><th>σ<sub>U</sub></th><th>σ<sub>V</sub></th><th>σ<sub>WS</sub></th><th>σ<sub>WD</sub></th></tr>';
+  S.targets.forEach((m, n) => {
+    const e = errorsAt(m.getLatLng(), F, P, [0, 0, 0, 0]);
+    e.forEach((v, q) => acc[q].push(v));
+    const c = isNaN(e[VIDX[S.v]]) ? [128, 128, 128] : levelColor(e[VIDX[S.v]], S.vmax[S.v]);
+    const icon = m.getElement().firstChild;
+    icon.style.background = `rgb(${c})`;
+    icon.style.color = textColor(c);
+    icon.textContent = fmtShort(e[VIDX[S.v]]);
+    html += `<tr><td>${n + 1}</td><td>${m.name}</td>${e.map(v => `<td>${fmt(v)}</td>`).join('')}</tr>`;
+  });
+  const mean = a => { const f = a.filter(v => !isNaN(v)); return f.length ? f.reduce((s, v) => s + v, 0) / f.length : NaN; };
+  const means = acc.map(mean);
+  html += `<tr><td></td><td><b>mean</b></td>${means.map(v => `<td><b>${fmt(v)}</b></td>`).join('')}</tr>`;
+  tbl.innerHTML = html;
+  drawHist(means, S.targets.length, acc[0].filter(v => !isNaN(v)).length);
+  drawBeamHist(S.targets.map(m => [0, 1].map(i => beamHeight(i, m.getLatLng()))));
+}
+
+function refreshLegend() {
+  const vmax = S.vmax[S.v];
+  document.getElementById('cbar').style.background =
+    `linear-gradient(to right, ${LEVCOL.map((c, i) => `rgb(${c}) ${i / NLEV * 100}%, rgb(${c}) ${(i + 1) / NLEV * 100}%`).join(',')})`;
+  document.getElementById('cticks').innerHTML = Array.from({ length: 6 }, (_, i) => `<span>${+(vmax * i / 5).toPrecision(3)}</span>`).join('');
+  document.getElementById('vmax').value = vmax;
+  document.querySelectorAll('#varSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === S.v));
+  document.querySelectorAll('#wdSeg button').forEach(b => b.classList.toggle('on', b.dataset.m === S.wdMode));
+  document.getElementById('wdRow').style.opacity = S.wdMode === 'single' ? 1 : 0.35;
+  document.getElementById('wd').disabled = S.wdMode !== 'single';
+  document.getElementById('wdVal').textContent = S.wd + '°';
+  document.getElementById('wdArrowG').setAttribute('transform', `rotate(${S.wd})`);
+}
+
+let zrefMarker = null;
+function applyLayer() {
+  const surf = S.layer === 'surf';
+  document.querySelectorAll('#layerSeg button').forEach(b => b.classList.toggle('on', b.dataset.l === S.layer));
+  document.getElementById('surfCtl').style.display = surf ? '' : 'none';
+  if (zrefMarker) { map.removeLayer(zrefMarker); zrefMarker = null; }
+  if (surf && S.zref) zrefMarker = L.circleMarker(S.zref, { radius: 5, color: '#fff', weight: 2, fillColor: '#000', fillOpacity: 1, interactive: false })
+    .bindTooltip('0 m', { permanent: true, direction: 'right', offset: [6, 0] }).addTo(map);
+}
+
+function applyCfg() {
+  const single = S.cfg === 'single';
+  document.querySelectorAll('.dual-only').forEach(el => el.style.display = single ? 'none' : '');
+  document.querySelectorAll('#cfgSeg button').forEach(b => b.classList.toggle('on', b.dataset.c === S.cfg));
+  [lidarMarkers[1], rangePolys[1], baselineLine].forEach(l => l && (single ? map.removeLayer(l) : l.addTo(map)));
+}
+
+function saveHash() {
+  const ll = p => `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+  const q = new URLSearchParams();
+  if (S.lidars[0]) q.set('l1', ll(S.lidars[0]));
+  if (S.lidars[1]) q.set('l2', ll(S.lidars[1]));
+  const manual = S.targets.filter(m => !m.fixed);
+  if (manual.length) q.set('t', manual.map(m => ll(m.getLatLng())).join(';'));
+  if (S.comments.length) q.set('cm', JSON.stringify(S.comments.map(m => { const p = m.getLatLng(); return [m.text, +p.lat.toFixed(6), +p.lng.toFixed(6)]; })));
+  if (S.instruments.length) q.set('ins', JSON.stringify(S.instruments.map(m => { const p = m.getLatLng(); return [m.name, m.shape, +p.lat.toFixed(6), +p.lng.toFixed(6), m.color]; })));
+  Object.entries({ v: S.v, ws: S.ws, wd: S.wd, m: S.wdMode, srws: S.srws, sw: S.sw, rmin: S.rmin, rmax: S.rmax, h1: S.h1, e1: S.e1, h2: S.h2, e2: S.e2, dmin1: S.dmin1, dmin2: S.dmin2, blk: +S.blkOn, z: S.z.join(','), cfg: S.cfg, layer: S.layer, hl: S.hLim ? S.hLim.join(',') : '', zr: S.zref ? `${S.zref.lat.toFixed(6)},${S.zref.lng.toFixed(6)}` : '', azmin1: S.azmin1, azmax1: S.azmax1, azmin2: S.azmin2, azmax2: S.azmax2 }).forEach(([k, v]) => q.set(k, v));
+  history.replaceState(null, '', '#' + q.toString());
+}
+
+function loadHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  const ll = s => s.split(',').map(Number);
+  if (q.has('v') && q.get('v') in VIDX) S.v = q.get('v');
+  if (q.has('m')) S.wdMode = q.get('m') === 'all' ? 'all' : 'single';
+  if (q.has('layer')) S.layer = q.get('layer') === 'surf' ? 'surf' : 'main';
+  if (q.get('hl')) { const hl = ll(q.get('hl')); if (hl.length === 2 && hl[0] < hl[1]) S.hLim = hl; }
+  if (q.get('zr')) { const [la, lo] = ll(q.get('zr')); if (!isNaN(la) && !isNaN(lo)) S.zref = L.latLng(la, lo); }
+  if (q.has('cfg')) S.cfg = q.get('cfg') === 'single' ? 'single' : 'dual';
+  NUM_KEYS.forEach(k => { if (q.has(k) && !isNaN(+q.get(k))) S[k] = +q.get(k); });
+  if (q.has('blk')) S.blkOn = q.get('blk') !== '0';
+  if (q.has('z')) S.z = q.get('z').split(',').map(Number).filter(v => !isNaN(v));
+  const json = k => { try { const v = JSON.parse(q.get(k)); return Array.isArray(v) ? v : []; } catch { return []; } };
+  return { l1: q.has('l1') ? ll(q.get('l1')) : null, l2: q.has('l2') ? ll(q.get('l2')) : null,
+           t: q.has('t') ? q.get('t').split(';').map(ll) : [], ins: json('ins'), cm: json('cm') };
+}
+
+function bindNumber(id, key, after) {
+  const el = document.getElementById(id);
+  el.value = S[key];
+  el.addEventListener('input', () => { const v = +el.value; if (el.value !== '' && !isNaN(v)) { S[key] = v; after && after(); update(); saveHash(); } });
+}
+
+async function init() {
+  initTips();
+  const h = loadHash();
+  // default site: NREL Flatirons Campus
+  const c0 = h.l1 && h.l2 ? L.latLng((h.l1[0] + h.l2[0]) / 2, (h.l1[1] + h.l2[1]) / 2) : L.latLng(39.9106, -105.2347);
+  map.setView(c0, 15);
+  const off = 500 / (111320 * Math.cos(c0.lat / DEG));
+  setLidar(0, h.l1 || [c0.lat, c0.lng - off]);
+  setLidar(1, h.l2 || [c0.lat, c0.lng + off]);
+  h.t.forEach(t => addTarget(t));
+  h.ins.forEach(([name, shape, lat, lon, color]) => isFinite(lat) && isFinite(lon) && addInstrument([lat, lon], name, shape, color));
+  refreshInstruments();
+  h.cm.forEach(([text, lat, lon]) => text && isFinite(lat) && isFinite(lon) && addComment([lat, lon], String(text)));
+
+  NUM_KEYS.forEach(k => bindNumber(k, k, k === 'wd' ? refreshLegend : undefined));
+  applyCfg();
+  applyLayer();
+  refreshHeightLegend();
+  document.querySelectorAll('#layerSeg button').forEach(b => b.onclick = () => { S.layer = b.dataset.l; applyLayer(); update(); saveHash(); });
+  const hIn = ['hmin', 'hmax'].map(id => document.getElementById(id));
+  hIn.forEach(el => el.addEventListener('change', () => {
+    const lo = +hIn[0].value, hi = +hIn[1].value;
+    if (hIn[0].value !== '' && hIn[1].value !== '' && lo < hi) { S.hLim = [lo, hi]; update(); saveHash(); }
+  }));
+  document.getElementById('hAuto').onclick = () => { S.hLim = null; update(); saveHash(); };
+  document.getElementById('zeroClr').onclick = () => { S.zref = null; applyLayer(); update(); saveHash(); };
+  document.querySelectorAll('#cfgSeg button').forEach(b => b.onclick = () => { S.cfg = b.dataset.c; applyCfg(); update(); saveHash(); });
+  const blkOn = document.getElementById('blkOn');
+  blkOn.checked = S.blkOn;
+  blkOn.addEventListener('change', () => { S.blkOn = blkOn.checked; update(); saveHash(); });
+  const zs = document.getElementById('zs');
+  zs.value = S.z.join(', ');
+  zs.addEventListener('change', () => {
+    const z = zs.value.split(/[,\s]+/).filter(Boolean).map(Number).filter(v => !isNaN(v) && v >= 0);
+    if (z.length) { S.z = z; update(); saveHash(); }
+  });
+  const op = document.getElementById('opacity');
+  op.value = S.opacity;
+  op.addEventListener('input', () => { S.opacity = +op.value; overlay && overlay.setOpacity(S.opacity); });
+  document.getElementById('vmax').addEventListener('input', e => {
+    const v = +e.target.value; if (v > 0) { S.vmax[S.v] = v; refreshLegend(); update(); }
+  });
+  document.querySelectorAll('#varSeg button').forEach(b => b.onclick = () => { S.v = b.dataset.v; refreshLegend(); update(); saveHash(); });
+  document.querySelectorAll('#wdSeg button').forEach(b => b.onclick = () => { S.wdMode = b.dataset.m; refreshLegend(); update(); saveHash(); });
+
+  [0, 1].forEach(i => ['lat', 'lon'].forEach(c => document.getElementById(`l${i + 1}${c}`).addEventListener('change', () => {
+    const la = +document.getElementById(`l${i + 1}lat`).value, lo = +document.getElementById(`l${i + 1}lon`).value;
+    if (!isNaN(la) && !isNaN(lo)) { setLidar(i, [la, lo]); saveHash(); }
+  })));
+
+  const setMode = m => {
+    S.mode = S.mode === m ? null : m;
+    document.getElementById('map').classList.toggle('placing', S.mode !== null);
+    document.querySelectorAll('[data-place]').forEach(b => b.classList.toggle('on', S.mode === +b.dataset.place));
+    document.getElementById('addTgt').classList.toggle('on', S.mode === 'T');
+    document.getElementById('zeroBtn').classList.toggle('on', S.mode === 'Z');
+    document.getElementById('addIns').classList.toggle('on', S.mode === 'I');
+    document.getElementById('addCm').classList.toggle('on', S.mode === 'C');
+  };
+  const insName = document.getElementById('insName'), insShape = document.getElementById('insShape'), insColor = document.getElementById('insColor');
+  insShape.innerHTML = Object.entries(MARKERS).map(([k, m]) => `<option value="${k}">${m.label}</option>`).join('');
+  const insPreview = () => document.getElementById('insPreview').innerHTML = markerSvg(insShape.value, insColor.value, 18);
+  insShape.onchange = insColor.oninput = insPreview; insPreview();
+  document.getElementById('addIns').onclick = () => setMode('I');
+  document.getElementById('addCm').onclick = () => setMode('C');
+  document.getElementById('zeroBtn').onclick = () => setMode('Z');
+  document.querySelectorAll('[data-place]').forEach(b => b.onclick = () => setMode(+b.dataset.place));
+  document.getElementById('addTgt').onclick = () => setMode('T');
+  document.getElementById('clearMap').onclick = () => {
+    const n = S.targets.length + S.instruments.length + S.comments.length;
+    if (!n || !confirm(`Remove all ${n} targets, instruments and comments from the map?`)) return;
+    S.targets.forEach(m => map.removeLayer(m)); S.targets = [];
+    S.instruments.forEach(m => map.removeLayer(m)); S.instruments = [];
+    const cms = S.comments; S.comments = []; cms.forEach(m => map.removeLayer(m));
+    // the sites file no longer matches the map, so a saved plan should not reload it
+    S.src.sites = null; sitesLoaded = false; document.getElementById('sitesFile').value = '';
+    sitesMsg('Select an .xlsx with columns Name, Latitude, Longitude (optional Type = Target).');
+    refreshInstruments(); update(); saveHash();
+  };
+  document.getElementById('clrTgt').onclick = () => {
+    S.targets.filter(m => !m.fixed).forEach(m => map.removeLayer(m));
+    S.targets = S.targets.filter(m => m.fixed); update(); saveHash();
+  };
+  map.on('click', e => {
+    if (S.mode === 'T') { addTarget(e.latlng); update(); saveHash(); }
+    else if (S.mode === 'C') { const m = addComment(e.latlng); setMode('C'); m.openPopup(); }
+    else if (S.mode === 'I') { addInstrument(e.latlng, insName.value.trim(), insShape.value, insColor.value); insName.value = ''; setMode('I'); refreshInstruments(); saveHash(); }
+    else if (S.mode === 'Z') { S.zref = e.latlng; setMode('Z'); applyLayer(); update(); saveHash(); }
+    else if (S.mode === 0 || S.mode === 1) { setLidar(S.mode, e.latlng); setMode(S.mode); saveHash(); }
+  });
+
+  const cur = document.querySelectorAll('#cursorTbl tr')[1].children;
+  map.on('mousemove', e => {
+    if (S.layer === 'surf') {
+      const tz = surfZoom(), v = surfAt(e.latlng, tz) - (S.zref ? surfAt(S.zref, tz) : 0);
+      document.getElementById('hCursor').textContent = isNaN(v) ? '' : `At cursor: ${v.toFixed(1)} m ${S.zref ? 'relative to the zero point' : 'ASL'}`;
+    }
+    if (!S.lidars[0] || !S.lidars[1] || S.cfg === 'single') return;
+    errorsAt(e.latlng, localFrame(), params(), [0, 0, 0, 0]).forEach((v, q) => cur[q + 1].textContent = fmt(v));
+  });
+  map.on('moveend zoomend resize', update);
+
+  document.getElementById('gotoBtn').onclick = () => {
+    const p = document.getElementById('goto').value.split(/[,\s]+/).map(Number);
+    if (p.length >= 2 && !isNaN(p[0]) && !isNaN(p[1])) map.setView(p.slice(0, 2), map.getZoom());
+  };
+  document.getElementById('share').onclick = async () => {
+    saveHash();
+    const msg = document.getElementById('shareMsg');
+    try { await navigator.clipboard.writeText(location.href); msg.textContent = 'Copied'; }
+    catch { msg.textContent = 'Copy the URL from the address bar'; }
+    setTimeout(() => msg.textContent = '', 2500);
+  };
+
+  document.getElementById('savePlan').onclick = () => savePlan().catch(err => { document.getElementById('planMsg').textContent = `Save failed (${err.message})`; });
+  const planMsg = t => document.getElementById('planMsg').textContent = t;
+  document.getElementById('connectDir').onclick = connectFolder;
+  document.getElementById('openPlan').onclick = () => openPlan().catch(err => { if (err.name !== 'AbortError') planMsg(`Could not open plan (${err.message})`); });
+  const planIn = document.getElementById('planFile');
+  planIn.onchange = async () => {
+    const f = planIn.files[0];
+    if (!f) return;
+    try { await openPlanFile(f); } catch (err) { planMsg(`Could not open ${f.name} (${err.message})`); }
+    planIn.value = '';
+  };
+
+  refreshLegend();
+  saveHash();
+  update();
+
+  // With a project folder connected, the file inputs are replaced by a picker that knows the file's path in the folder
+  const pickerFor = (input, types, multiple, done, say) => input.addEventListener('click', e => {
+    if (!projDir) return;
+    e.preventDefault();
+    pickInFolder(types, multiple).then(done).catch(err => { if (err.name !== 'AbortError') say(`Could not read the file (${err.message}).`); });
+  });
+  const fileIn = document.getElementById('sitesFile');
+  fileIn.onchange = () => fileIn.files[0] && sitesPicked({ file: fileIn.files[0], path: null });
+  pickerFor(fileIn, [{ description: 'Sites spreadsheet', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] } }], false, ([it]) => sitesPicked(it), sitesMsg);
+  const dsmIn = document.getElementById('dsmFile');
+  dsmIn.onchange = () => dsmIn.files.length && loadDSMFiles([...dsmIn.files].map(file => ({ file, path: null })));
+  pickerFor(dsmIn, [{ description: 'Surface model (.png + .json)', accept: { 'image/png': ['.png'], 'application/json': ['.json'] } }], true, loadDSMFiles, dsmMsg);
+
+  await restoreFolder();
+  update();
+}
+
+function initTips() {
+  const pop = document.createElement('div');
+  pop.id = 'tip';
+  document.body.appendChild(pop);
+  document.querySelectorAll('.tip').forEach(t => document.querySelectorAll(t.dataset.for).forEach(el => {
+    el.classList.add('has-tip');
+    el.addEventListener('mouseenter', () => {
+      pop.innerHTML = t.innerHTML; pop.style.display = 'block';
+      const r = el.getBoundingClientRect(), w = pop.offsetWidth, ht = pop.offsetHeight;
+      pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+      pop.style.top = (r.bottom + 6 + ht < innerHeight ? r.bottom + 6 : Math.max(8, r.top - ht - 6)) + 'px';
+    });
+    el.addEventListener('mouseleave', () => pop.style.display = 'none');
+  }));
+}
+init();
+</script>
+</body>
+</html>

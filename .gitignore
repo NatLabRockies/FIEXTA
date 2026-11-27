@@ -7,11 +7,6 @@ __pycache__
 *.yaml
 *.xlsx
 *.txt
-<<<<<<< HEAD
-trash/*
-*.egg-info/
-*.hpl
-=======
 trash/
 *.hpl
 *.html
@@ -19,4 +14,4 @@ trash/
 *.dss
 build/
 lidargo/docs/_build/
->>>>>>> main
+*.json

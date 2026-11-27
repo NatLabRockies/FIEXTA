@@ -1,0 +1,50 @@
+Metadata-Version: 2.4
+Name: lisboa
+Version: 0.1.1
+Summary: LiDAR Statistical Barnes Objective Analysis
+Home-page: https://github.com/NREL/fiexta/lisboa
+Author: Stefano Letizia
+Author-email: stefano.letizia@nrel.gov
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: License :: OSI Approved :: GNU Affero GPL v3.0 License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.8
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: matplotlib>=3.4.0
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: xarray>=0.19.0
+Requires-Dist: netCDF4>=1.5.7
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov>=2.0; extra == "dev"
+Requires-Dist: flake8>=3.9.0; extra == "dev"
+Requires-Dist: black>=21.0; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: home-page
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# LiSBOA (LiDAR Statistical Barnes Objective Analysis)
+*This package is registered as an NREL Software Record with identification number SWR-24-129.*
+
+<p align="center">
+  <img src="lisboa/lisboa_logo.jpg" alt="Project Logo" width="200">
+</p>
+
+Suite of codes to perform objective statistical analysis of scattered observations. 
+Clone to your local machine, navigate to the location where the setup.py lives, and then:
+`pip install -e .`
+
+This will install LiSBOA as an editable Python package in the current environment.
